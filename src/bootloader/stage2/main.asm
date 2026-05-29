@@ -42,8 +42,10 @@ start:
 	mov cr0, eax
 
 	;far jump toflush pipeline and enter 32 bit mode
-	jmp 0x08:0x2003f
-
+	db 0x66, 0xEA
+	dd protected_mode + 0x20000
+	dw 0x08
+	
 
 ; 32 bit protected mode entry lol :) 
 bits 32
@@ -59,6 +61,8 @@ protected_mode:
 
 	;vga test
 	mov dword [0xB8000], 0x2F4F2F4B ; OK in green
+
+	jmp 0x10000
 
 	cli
 	hlt
