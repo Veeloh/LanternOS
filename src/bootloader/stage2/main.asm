@@ -43,7 +43,7 @@ start:
 	.kernel_loaded:
 	
 
-	msg_kernel_error: db 'kernel load failed :/', 0x0D, 0x0A, 0
+
 	
 	;disable int
 	cli
@@ -149,6 +149,6 @@ gdt_descriptor:
 
 
 msg_hello: db 'Stage 2 loaded, entering protected mode...', ENDL, 0
-
+msg_kernel_error: db 'kernel load failed :/', 0x0D, 0x0A, 0
 
 
