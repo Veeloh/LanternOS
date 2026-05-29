@@ -135,7 +135,8 @@ protected_mode:
     mov dword [0xB8000], 0x2F4F2F4B
     mov byte [0xB8004], 'J'
     mov byte [0xB8005], 0x0F
-    jmp 0x10000
+    mov dword [0xB8008], 0x0F580F58
+    jmp dword 0x10000
     cli
     hlt
 
