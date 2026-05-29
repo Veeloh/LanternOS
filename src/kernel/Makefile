@@ -9,15 +9,15 @@ all: kernel
 
 kernel: $(BUILD_DIR)/kernel.bin
 
-$(BUILD_DIR)/kernel_entry.o:
+$(BUILD_DIR)/kernel_entry.o: entry.asm
 	$(ASM) entry.asm -f elf32 -o $(BUILD_DIR)/kernel_entry.o
 
 $(BUILD_DIR)/kernel_main.o: main.c
-	$(CC) -m32 -ffreestanding -fno-pic -nostdlib -c main.c -o $(BUILD_DIR)/kernel_main.o
+	$(CC) -m32 -ffreestanding -fno-pic -nostdlib -O0 -c main.c -o $(BUILD_DIR)/kernel_main.o
 
 
 $(BUILD_DIR)/kernel.bin: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel_main.o
-	$(LD) -m elf_i386 -Ttext 0x10000 --oformat binary \
+	$(LD) -m elf_i386 -Ttext 0x10000 --oformat binary -e _start \
 		$(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel_main.o \
 		-o $(BUILD_DIR)/kernel.bin
 

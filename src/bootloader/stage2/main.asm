@@ -22,6 +22,30 @@ start:
 	mov ax, 0x2401
 	int 0x15
 
+	;load kernel
+	mov ax, 0x1000
+	mov es, ax
+	mov bx, 0
+	mov ah,0x02
+	mov al, 9 ; 9 sectors
+	mov ch, 0 ; cynlinder 0
+	mov cl, 17 ; sector 34
+	mov dh, 1 ; head 0
+	mov dl, 0 ; floppy drive 0
+	int 0x13
+	jnc .kernel_loaded
+
+	mov si, msg_kernel_error
+	call puts
+	cli
+	hlt
+
+	.kernel_loaded:
+	
+
+	msg_kernel_error: db 'kernel load failed :/', 0x0D, 0x0A, 0
+	
+	;disable int
 	cli
 	
 	
@@ -61,6 +85,10 @@ protected_mode:
 
 	;vga test
 	mov dword [0xB8000], 0x2F4F2F4B ; OK in green
+
+	;J for jump
+	mov byte [0xB8004], 'J'
+	mov byte [0xB8005], 0x0F
 
 	jmp 0x10000
 
