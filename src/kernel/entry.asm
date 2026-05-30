@@ -7,5 +7,7 @@ _start:
 	mov eax, 0xB8000
 	mov dword [eax], 0x2F412F41
 
+	call kernel_main
+
 hang:
 	jmp hang

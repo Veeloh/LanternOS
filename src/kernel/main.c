@@ -13,13 +13,13 @@ void print(const char* str) {
 
 void kernel_main() {
 	//clear screen first yay
-//	unsigned char* video = (unsigned char*)VIDEO_MEMORY;
-//	for (int i = 0; i < 80 * 25 *2; i++) {
-//		video[1] = 0;
-//	}
+	unsigned char* video = (unsigned char*)VIDEO_MEMORY;
+	for (int i = 0; i < 80 * 25 *2; i++) {
+		video[1] = 0;
+	}
 
 
-	while(1);
+//	while(1);
 
-	//print("LanternOS kernel loaded!");
+	print("LanternOS kernel loaded!");
 }

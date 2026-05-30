@@ -56,12 +56,12 @@ start:
     add eax, gdt_start
     mov [gdt_descriptor + 2], eax
     lgdt [gdt_descriptor]
-
- 	mov eax, cr0
- 	or eax, 1
- 	mov cr0, eax
- 	
-	jmp  0x08:protected_mode
+    mov eax, cr0
+    or eax, 1
+    mov cr0, eax
+    db 0x66, 0xEA
+    dd protected_mode + 0x20000
+    dw 0x08
 
 lba_to_chs:
     push ax
