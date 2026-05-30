@@ -8,6 +8,10 @@ typedef uint8_t bool;
 #define true 1
 #define false 0
 
+#define MAX_REASONABLE_SECTOR_SIZE  4096
+#define MAX_REASONABLE_FAT_SECTORS  256
+#define MAX_REASONABLE_DIR_ENTRIES  4096
+
 typedef struct 
 {
     uint8_t BootJumpInstruction[3];
@@ -56,6 +60,7 @@ typedef struct
 
 BootSector g_BootSector;
 uint8_t* g_Fat = NULL;
+uint32_t g_FatSize = 0;
 DirectoryEntry* g_RootDirectory = NULL;
 uint32_t g_RootDirectoryEnd;
 
@@ -75,12 +80,32 @@ bool readSectors(FILE* disk, uint32_t lba, uint32_t count, void* bufferOut)
 
 bool readFat(FILE* disk)
 {
-    g_Fat = (uint8_t*) malloc(g_BootSector.SectorsPerFat * g_BootSector.BytesPerSector);
+    if (g_BootSector.BytesPerSector == 0 || g_BootSector.BytesPerSector > MAX_REASONABLE_SECTOR_SIZE) {
+        fprintf(stderr, "Invalid bytes per sector: %u\n", g_BootSector.BytesPerSector);
+        return false;
+    }
+    if (g_BootSector.SectorsPerFat == 0 || g_BootSector.SectorsPerFat > MAX_REASONABLE_FAT_SECTORS) {
+        fprintf(stderr, "Invalid sectors per FAT: %u\n", g_BootSector.SectorsPerFat);
+        return false;
+    }
+
+    uint32_t fatSize = (uint32_t)g_BootSector.SectorsPerFat * g_BootSector.BytesPerSector;
+    g_Fat = (uint8_t*) malloc(fatSize);
+    if (!g_Fat) {
+        fprintf(stderr, "Failed to allocate memory for FAT\n");
+        return false;
+    }
+    g_FatSize = fatSize;
     return readSectors(disk, g_BootSector.ReservedSectors, g_BootSector.SectorsPerFat, g_Fat);
 }
 
 bool readRootDirectory(FILE* disk)
 {
+    if (g_BootSector.DirEntryCount == 0 || g_BootSector.DirEntryCount > MAX_REASONABLE_DIR_ENTRIES) {
+        fprintf(stderr, "Invalid directory entry count: %u\n", g_BootSector.DirEntryCount);
+        return false;
+    }
+
     uint32_t lba = g_BootSector.ReservedSectors + g_BootSector.SectorsPerFat * g_BootSector.FatCount;
     uint32_t size = sizeof(DirectoryEntry) * g_BootSector.DirEntryCount;
     uint32_t sectors = (size / g_BootSector.BytesPerSector);
@@ -89,6 +114,10 @@ bool readRootDirectory(FILE* disk)
 
     g_RootDirectoryEnd = lba + sectors;
     g_RootDirectory = (DirectoryEntry*) malloc(sectors * g_BootSector.BytesPerSector);
+    if (!g_RootDirectory) {
+        fprintf(stderr, "Failed to allocate memory for root directory\n");
+        return false;
+    }
     return readSectors(disk, lba, sectors, g_RootDirectory);
 }
 
@@ -109,11 +138,20 @@ bool readFile(DirectoryEntry* fileEntry, FILE* disk, uint8_t* outputBuffer)
     uint16_t currentCluster = fileEntry->FirstClusterLow;
 
     do {
+        if (currentCluster < 2) {
+            fprintf(stderr, "Invalid cluster number: %u\n", currentCluster);
+            return false;
+        }
+
         uint32_t lba = g_RootDirectoryEnd + (currentCluster - 2) * g_BootSector.SectorsPerCluster;
         ok = ok && readSectors(disk, lba, g_BootSector.SectorsPerCluster, outputBuffer);
         outputBuffer += g_BootSector.SectorsPerCluster * g_BootSector.BytesPerSector;
 
         uint32_t fatIndex = currentCluster * 3 / 2;
+        if (fatIndex + 1 >= g_FatSize) {
+            fprintf(stderr, "FAT index out of bounds: %u (FAT size: %u)\n", fatIndex, g_FatSize);
+            return false;
+        }
         if (currentCluster % 2 == 0)
             currentCluster = (*(uint16_t*)(g_Fat + fatIndex)) & 0x0FFF;
         else
@@ -163,7 +201,22 @@ int main(int argc, char** argv)
         return -5;
     }
 
-    uint8_t* buffer = (uint8_t*) malloc(fileEntry->Size + g_BootSector.BytesPerSector);
+    size_t allocSize = (size_t)fileEntry->Size + (size_t)g_BootSector.BytesPerSector;
+    if (allocSize < fileEntry->Size) {
+        fprintf(stderr, "File size too large: %u\n", fileEntry->Size);
+        free(g_Fat);
+        free(g_RootDirectory);
+        fclose(disk);
+        return -6;
+    }
+    uint8_t* buffer = (uint8_t*) malloc(allocSize);
+    if (!buffer) {
+        fprintf(stderr, "Failed to allocate memory for file buffer\n");
+        free(g_Fat);
+        free(g_RootDirectory);
+        fclose(disk);
+        return -6;
+    }
     if (!readFile(fileEntry, disk, buffer)) {
         fprintf(stderr, "Could not read file %s!\n", argv[2]);
         free(g_Fat);
@@ -182,5 +235,6 @@ int main(int argc, char** argv)
     free(buffer);
     free(g_Fat);
     free(g_RootDirectory);
+    fclose(disk);
     return 0;
 }
