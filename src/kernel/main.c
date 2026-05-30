@@ -1,5 +1,6 @@
 #define VIDEO_MEMORY 0xB8000
 #define WHITE_ON_BLACK 0x0F
+#include "vga.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -12,14 +13,14 @@ void print(const char* str) {
 }
 
 void kernel_main() {
-	//clear screen first yay
-	unsigned char* video = (unsigned char*)VIDEO_MEMORY;
-	for (int i = 0; i < 80 * 25 *2; i++) {
-		video[1] = 0;
-	}
+	vga_init();
+	vga_set_colour(VGA_YELLOW, VGA_BLACK);
+	vga_set_cursor(30, 12);
+	vga_print("Welcome to LanternOS");
+	
 
 
-//	while(1);
+	print("LanternOS kernel loaded!"); //finally works yippie
 
-	print("LanternOS kernel loaded!");
+	while(1);
 }
