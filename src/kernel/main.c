@@ -3,6 +3,7 @@
 #include "vga.h"
 #include "idt.h"
 #include "pic.h"
+#include "keyboard.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -24,6 +25,7 @@ void kernel_main() {
 	
 	pic_remap();
 	idt_init();
+	keyboard_init();
 
 	//enable interupts
 	__asm__ volatile ("sti");

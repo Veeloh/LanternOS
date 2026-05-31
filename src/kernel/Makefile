@@ -27,10 +27,13 @@ $(BUILD_DIR)/kernel_pic.o: pic.c
 $(BUILD_DIR)/kernel_idt_asm.o: idt_asm.asm
 	$(ASM) idt_asm.asm -f elf32 -o $(BUILD_DIR)/kernel_idt_asm.o
 
-$(BUILD_DIR)/kernel.bin: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel_main.o $(BUILD_DIR)/kernel_vga.o $(BUILD_DIR)/kernel_idt.o $(BUILD_DIR)/kernel_pic.o $(BUILD_DIR)/kernel_idt_asm.o
+$(BUILD_DIR)/kernel_keyboard.o: keyboard.c
+	$(CC) -m32 -ffreestanding -fno-pic -nostdlib -O0  -c keyboard.c -o $(BUILD_DIR)/kernel_keyboard.o
+
+$(BUILD_DIR)/kernel.bin: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel_main.o $(BUILD_DIR)/kernel_vga.o $(BUILD_DIR)/kernel_idt.o $(BUILD_DIR)/kernel_pic.o $(BUILD_DIR)/kernel_idt_asm.o $(BUILD_DIR)/kernel_keyboard.o 
 	$(LD) -m elf_i386 -Ttext 0x10000 --oformat binary -e _start \
 		$(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel_main.o $(BUILD_DIR)/kernel_vga.o  \
-		$(BUILD_DIR)/kernel_idt.o $(BUILD_DIR)/kernel_pic.o $(BUILD_DIR)/kernel_idt_asm.o \
+		$(BUILD_DIR)/kernel_idt.o $(BUILD_DIR)/kernel_pic.o $(BUILD_DIR)/kernel_idt_asm.o $(BUILD_DIR)/kernel_keyboard.o  \
 		-o $(BUILD_DIR)/kernel.bin
 
 clean:

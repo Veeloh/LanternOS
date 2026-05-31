@@ -15,3 +15,5 @@ typedef struct {
 } __attribute__((packed)) idt_ptr_t;
 
 void idt_init();
+
+void idt_set_handler(int n, uint32_t handler);

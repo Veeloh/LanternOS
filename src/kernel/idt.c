@@ -25,3 +25,7 @@ void idt_init() {
 
 	idt_load(&idt_ptr);
 }
+
+void idt_set_handler(int n, uint32_t handler) {
+	idt_set_entry(n, handler);
+}
