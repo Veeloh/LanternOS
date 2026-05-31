@@ -19,6 +19,8 @@ void kernel_main() {
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
 	vga_set_cursor(30, 12);
 	vga_print("Welcome to LanternOS");
+	vga_set_cursor(38, 13);
+	vga_print("v0.1");
 	
 	pic_remap();
 	idt_init();
