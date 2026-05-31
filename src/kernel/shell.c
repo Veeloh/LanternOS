@@ -57,7 +57,7 @@ static void shell_execute() {
 			seconds /= 10;
 		} else {
 			while (seconds > 0) {
-				buf[i++] = 0 + (seconds % 10);
+				buf[i++] = '0' + (seconds % 10);
 				seconds /= 10;
 			}
 
