@@ -4,6 +4,7 @@
 #include "idt.h"
 #include "pic.h"
 #include "keyboard.h"
+#include "shell.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -56,14 +57,17 @@ void kernel_main() {
 	while(keyboard_getchar() == 0);
 
 	//clear and show shell
-	vga_clear();
-	vga_set_colour(VGA_YELLOW, VGA_BLACK);
-	vga_set_cursor(0, 0);
-	vga_print("LanternOS Shell v0.1");
-	vga_set_colour(VGA_WHITE, VGA_BLACK);
-	vga_set_cursor(0, 1);
-	vga_print("> ");
+//	vga_clear();
+//	vga_set_colour(VGA_YELLOW, VGA_BLACK);
+//	vga_set_cursor(0, 0);
+//	vga_print("LanternOS Shell v0.1");
+//	vga_set_colour(VGA_WHITE, VGA_BLACK);
+//	vga_set_cursor(0, 1);
+//	vga_print("> ");
+	shell_init();
 	
 
-	while(1);
+	while(1) {
+		shell_run();
+	}
 }

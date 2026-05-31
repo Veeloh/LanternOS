@@ -19,7 +19,7 @@ char scancode_map[58] = {
     '0',    // 11
     '-',    // 12
     '=',    // 13
-    0,      // 14 - backspace
+    '\b',      // 14 - backspace
     0,      // 15 - tab
     'q',    // 16
     'w',    // 17
@@ -97,8 +97,12 @@ void keyboard_handler() {
 	
 	char c = scancode_map[scancode];
 	if (c) {
-		last_char = c;
-		vga_putchar(c);
+		if (c >= 32 && c <= 126 || c == '\b' || c == '\n') {
+			last_char = c;
+		}
+	
+		
+	//	vga_putchar(c);
 	} else {
 		vga_putchar('?');
 	}

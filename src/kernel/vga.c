@@ -39,6 +39,10 @@ void vga_putchar(char c) {
 		cursor_y++;
 	} else if (c == '\r') {
 		cursor_x = 0;
+	} else if (c == '\b') {
+		if (cursor_x > 0) {
+			cursor_x--;
+		}
 	} else {
 		video[cursor_y * VGA_WIDTH + cursor_x] = vga_entry(c, current_colour);
 		cursor_x++;
@@ -51,6 +55,8 @@ void vga_putchar(char c) {
 	if (cursor_y >= VGA_HEIGHT) {
 		vga_scroll();
 	}
+
+
 	
 	
 }
