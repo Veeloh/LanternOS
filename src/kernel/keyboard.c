@@ -4,13 +4,14 @@
 
 #define KEYBOARD_PORT 0x60
 
-static char scancode_map[] = {
-	0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0,
-	0, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n',
-	0, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',
-	0, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0, 
-	'*', 0, ' '
+static char scancode_map[58] = {
+    0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 0,
+    0, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n',
+    0, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',
+    0, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,
+    '*', 0, ' '
 };
+
 
 static char last_char = 0;
 
@@ -26,20 +27,27 @@ static void outb(uint16_t port, uint8_t value) {
 }
 
 void keyboard_handler() {
+	//test code to see if this is even firing
+//	vga_set_colour(VGA_RED, VGA_BLACK);
+//	vga_set_cursor(0,0);
+//	vga_print("KEY!");
 	uint8_t scancode = inb(KEYBOARD_PORT);
 
-	//ignore all key releases gng twin son
 	if (scancode >= 0x80) {
-		//send eoi
 		outb(0x20, 0x20);
 		return;
 	}
-
-	if (scancode < sizeof(scancode_map) && scancode_map[scancode]) {
-		last_char = scancode_map[scancode];
-		vga_putchar(last_char);
+	
+	vga_set_colour(VGA_WHITE, VGA_BLACK);
+	vga_set_cursor(0, 24);
+	
+	char c = scancode_map[scancode];
+	if (c) {
+		vga_putchar(c);
+	} else {
+		vga_putchar('?');
 	}
-
+	
 	//send eoi
 	outb(0x20, 0x20);
 }
