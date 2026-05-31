@@ -50,7 +50,9 @@ char keyboard_getchar() {
 	return c;
 }
 
+extern void keyboard_isr();
+
 void keyboard_init() {
 	last_char = 0;
-	idt_set_handler(33, (uint32_t)keyboard_handler);
+	idt_set_handler(33, (uint32_t)keyboard_isr);
 }
