@@ -66,6 +66,15 @@ char scancode_map[58] = {
 };
 
 
+static char scancode_map_shift[58] = {
+    0, 0, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', 0,
+    0, 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', '\n',
+    0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
+    0, '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,
+    '*', 0, ' '
+};
+
+static int shift_pressed = 0;
 
 static char last_char = 0;
 
@@ -86,7 +95,19 @@ void keyboard_handler() {
 //	vga_set_cursor(0,0);
 //	vga_print("KEY!");
 	uint8_t scancode = inb(KEYBOARD_PORT);
-
+	//shift pressed
+	if (scancode == 0x2A || scancode == 0x36) {
+		shift_pressed = 1;
+		outb(0x20, 0x20);
+		return;
+	}
+	//shift released
+	if (scancode == 0xAA || scancode == 0xB6) {
+		shift_pressed = 0;
+		outb(0x20, 0x20);
+		return;
+	}
+	
 	if (scancode >= 0x80) {
 		outb(0x20, 0x20);
 		return;
@@ -95,13 +116,17 @@ void keyboard_handler() {
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 
 	
-	char c = scancode_map[scancode];
+	char c;
+	if (shift_pressed) {
+		c = scancode_map_shift[scancode];
+	} else {
+		c = scancode_map[scancode];
+	}
+	
 	if (c) {
 		if (c >= 32 && c <= 126 || c == '\b' || c == '\n') {
 			last_char = c;
-		}
-	
-		
+		}	
 	//	vga_putchar(c);
 	} else {
 		vga_putchar('?');
