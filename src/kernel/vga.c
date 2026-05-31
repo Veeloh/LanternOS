@@ -23,10 +23,10 @@ void vga_clear() {
 
 static void vga_scroll() {
 	for (int y = 0; y < VGA_HEIGHT - 1; y++)
-		for (int x = 0; x=VGA_WIDTH; x++)
+		for (int x = 0; x < VGA_WIDTH; x++)
 			video[y * VGA_WIDTH + x] = 	video[(y + 1) * VGA_WIDTH + x];
 
-	for (int x = 0; x=VGA_WIDTH; x++)
+	for (int x = 0; x < VGA_WIDTH; x++)
 		video[(VGA_HEIGHT - 1) * VGA_WIDTH + x] = vga_entry(' ', current_colour);
 
 	cursor_y = VGA_HEIGHT - 1;
