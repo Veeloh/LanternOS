@@ -33,10 +33,15 @@ $(BUILD_DIR)/kernel_keyboard.o: keyboard.c
 $(BUILD_DIR)/kernel_shell.o: shell.c
 	$(CC) -m32 -ffreestanding -fno-pic -nostdlib -O0  -c shell.c -o $(BUILD_DIR)/kernel_shell.o
 
-$(BUILD_DIR)/kernel.bin: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel_main.o $(BUILD_DIR)/kernel_vga.o $(BUILD_DIR)/kernel_idt.o $(BUILD_DIR)/kernel_pic.o $(BUILD_DIR)/kernel_idt_asm.o $(BUILD_DIR)/kernel_keyboard.o $(BUILD_DIR)/kernel_shell.o 
+	
+$(BUILD_DIR)/kernel_timer.o: timer.c
+	$(CC) -m32 -ffreestanding -fno-pic -nostdlib -O0  -c timer.c -o $(BUILD_DIR)/kernel_timer.o
+
+
+$(BUILD_DIR)/kernel.bin: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel_main.o $(BUILD_DIR)/kernel_vga.o $(BUILD_DIR)/kernel_idt.o $(BUILD_DIR)/kernel_pic.o $(BUILD_DIR)/kernel_idt_asm.o $(BUILD_DIR)/kernel_keyboard.o $(BUILD_DIR)/kernel_shell.o $(BUILD_DIR)/kernel_timer.o
 	$(LD) -m elf_i386 -Ttext 0x10000 --oformat binary -e _start \
 		$(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel_main.o $(BUILD_DIR)/kernel_vga.o  \
-		$(BUILD_DIR)/kernel_idt.o $(BUILD_DIR)/kernel_pic.o $(BUILD_DIR)/kernel_idt_asm.o $(BUILD_DIR)/kernel_keyboard.o $(BUILD_DIR)/kernel_shell.o \
+		$(BUILD_DIR)/kernel_idt.o $(BUILD_DIR)/kernel_pic.o $(BUILD_DIR)/kernel_idt_asm.o $(BUILD_DIR)/kernel_keyboard.o $(BUILD_DIR)/kernel_shell.o $(BUILD_DIR)/kernel_timer.o\
 		-o $(BUILD_DIR)/kernel.bin
 
 clean:

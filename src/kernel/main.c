@@ -5,6 +5,7 @@
 #include "pic.h"
 #include "keyboard.h"
 #include "shell.h"
+#include "timer.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -43,6 +44,7 @@ void kernel_main() {
 	}
 	
 	keyboard_init();
+	timer_init(100);
 
 	//enable interupts
 	__asm__ volatile ("sti");

@@ -1,6 +1,7 @@
 #include "shell.h"
 #include "vga.h"
 #include "keyboard.h"
+#include "timer.h"
 
 #define MAX_CMD_LEN 256
 
@@ -29,6 +30,7 @@ static void shell_execute() {
 		vga_print("\nAvailable commands:\n");
 		vga_print("	help - show this menu\n");
 		vga_print("	clear - clear this screen\n");
+		vga_print("	uptime - shows how long the systems been online\n");
 	} else if (strcmp(cmd_buffer, "clear") == 0) {
 		vga_clear();
 		vga_set_colour(VGA_YELLOW, VGA_BLACK);
@@ -41,9 +43,37 @@ static void shell_execute() {
 		vga_print("\n             ##%%#@%%%%%%%%%%%%%%#*              ");
 		vga_print("\n           ##%%%%##%###**++===++#*####*          ");
 		vga_print("\n          #%%%%###*#+===---:---===+*#%%#         ");
-		vga_print("\n          #%%%%###*#+===---:---===+*#%%#         \n        #%%@#****#+=====-----:-==-==+#%%%   \n        ##%%******======-----:----===*%%%   \n        %%%#**#++========--==:----===*%%%       \n        %@%**###*+++++++=====++*+++==+%%%        \n         #%##**###%##**++***#%%%%****=#%@        \n         #@**%#*#@##%**=:+*%#*@++##+-*###       \n         #%+*###%*#%%#====*###*==+#+-=*%+         \n         #%***####**##*=-====++++===-*=#+        \n         %#**++==++*#**=-=+=++++====-=**-      \n         *%**+++****#*++=====++*#**++==--    \n          #***%#####**+==+**+=++**##+*+       \n           ##%%%########**++++*#%%#@*#*          \n           *#++*%%#####****#+=+-%+*++=           \n            **++#%*--:-:+.-.::.#++#+*            \n             ##++*#%*-::-::-*=**===+             \n               #***#**==#+---+*===               \n            %####***+#**++++++====+=*-           \n        %%*%#*@*##*****+++++=====*+==+==-:       ");
-		
-	}else {
+		vga_print("\n          #%%%%###*#+===---:---===+*#%%#         \n        #%%@#****#+=====-----:-==-==+#%%%   \n        ##%%******======-----:----===*%%%   \n        %%%#**#++========--==:----===*%%%       \n        %@%**###*+++++++=====++*+++==+%%%        \n         #%##**###%##**++***#%%%%****=#%@        \n         #@**%#*#@##%**=:+*%#*@++##+-*###       \n         #%+*###%*#%%#====*###*==+#+-=*%+         \n         #%***####**##*=-====++++===-*=#+        \n         %#**++==++*#**=-=+=++++====-=**-      \n         *%**+++****#*++=====++*#**++==--    \n          #***%#####**+==+**+=++**##+*+       \n           ##%%%########**++++*#%%#@*#*          \n           *#++*%%#####****#+=+-%+*++=           \n            **++#%*--:-:+.-.::.#++#+*            \n             ##++*#%*-::-::-*=**===+             \n               #***#**==#+---+*===               \n            %####***+#**++++++====+=*-           \n        %%*%#*@*##*****+++++=====*+==+==-:       ");	
+	} else if (strcmp(cmd_buffer, "uptime") == 0) {
+		uint32_t t = timer_get_ticks();
+		vga_set_colour(VGA_WHITE, VGA_BLACK);
+		vga_print("\nUptime: ");
+		//print seconds (ticks / 100)
+		uint32_t seconds = t / 100;
+		char buf[16];
+		int i = 0;
+		if (seconds == 0) {
+			buf[i++] = '0' + (seconds % 10);
+			seconds /= 10;
+		} else {
+			while (seconds > 0) {
+				buf[i++] = 0 + (seconds % 10);
+				seconds /= 10;
+			}
+
+			//reverse
+			int a, b;
+			for (a = 0, b = i-1; a < b; a++, b--) {
+				char tmp = buf[a];
+				buf[a] = buf[b];
+				buf[b] = tmp;
+			}
+		}
+		buf[i] = 0;
+		vga_print("\n");
+		vga_print(buf);
+		vga_print(" seconds.");
+	} else {
 		vga_print("\nUnknown command: ");
 		vga_print(cmd_buffer);
 	}

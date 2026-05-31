@@ -24,3 +24,12 @@ keyboard_isr:
 	call keyboard_handler
 	popa
 	iret
+
+extern timer_handler
+
+global timer_isr
+timer_isr:
+	pusha
+	call timer_handler
+	popa
+	iret
