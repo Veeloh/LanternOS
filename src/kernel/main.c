@@ -25,6 +25,16 @@ void kernel_main() {
 	
 	pic_remap();
 	idt_init();
+	extern char scancode_map[];
+	vga_set_colour(VGA_GREEN, VGA_BLACK);
+	vga_set_cursor(0, 1);
+	if (scancode_map[16] == 'q') {
+		vga_print("map ok");
+	} else {
+		vga_set_colour(VGA_RED, VGA_BLACK);
+		vga_print("map bad");
+	}
+	
 	keyboard_init();
 
 	//enable interupts
