@@ -1,6 +1,8 @@
 #define VIDEO_MEMORY 0xB8000
 #define WHITE_ON_BLACK 0x0F
 #include "vga.h"
+#include "idt.h"
+#include "pic.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -18,9 +20,16 @@ void kernel_main() {
 	vga_set_cursor(30, 12);
 	vga_print("Welcome to LanternOS");
 	
+	pic_remap();
+	idt_init();
 
+	//enable interupts
+	__asm__ volatile ("sti");
 
 	print("LanternOS kernel loaded!"); //finally works yippie
+
+	// trigger a software interrupt to test IDT (works great :P)
+	//	__asm__ volatile ("int $0x80");
 
 	while(1);
 }
