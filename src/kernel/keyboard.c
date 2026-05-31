@@ -93,10 +93,11 @@ void keyboard_handler() {
 	}
 	
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
-	vga_set_cursor(0, 24);
+
 	
 	char c = scancode_map[scancode];
 	if (c) {
+		last_char = c;
 		vga_putchar(c);
 	} else {
 		vga_putchar('?');

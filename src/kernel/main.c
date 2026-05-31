@@ -15,6 +15,7 @@ void print(const char* str) {
 	}
 }
 
+
 void kernel_main() {
 	vga_init();
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
@@ -22,9 +23,14 @@ void kernel_main() {
 	vga_print("Welcome to LanternOS");
 	vga_set_cursor(38, 13);
 	vga_print("v0.1");
+	vga_set_colour(VGA_WHITE, VGA_BLACK);
+	vga_set_cursor(27, 15);
+	vga_print("Press any key to continue...");
+	
 	
 	pic_remap();
 	idt_init();
+	vga_hide_cursor();
 	extern char scancode_map[];
 	vga_set_colour(VGA_GREEN, VGA_BLACK);
 	vga_set_cursor(0, 1);
@@ -44,6 +50,20 @@ void kernel_main() {
 
 	// trigger a software interrupt to test IDT (works great :P)
 	//	__asm__ volatile ("int $0x80");
+
+
+	//wait for keypress
+	while(keyboard_getchar() == 0);
+
+	//clear and show shell
+	vga_clear();
+	vga_set_colour(VGA_YELLOW, VGA_BLACK);
+	vga_set_cursor(0, 0);
+	vga_print("LanternOS Shell v0.1");
+	vga_set_colour(VGA_WHITE, VGA_BLACK);
+	vga_set_cursor(0, 1);
+	vga_print("> ");
+	
 
 	while(1);
 }

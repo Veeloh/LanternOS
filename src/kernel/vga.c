@@ -69,3 +69,12 @@ void vga_set_cursor(int x, int y) {
 	cursor_x = x;
 	cursor_y = y;
 }
+
+static void outb(uint16_t port, uint8_t value) {
+	__asm__ volatile ("outb %0, %1" :: "a"(value), "Nd"(port));
+}
+
+void vga_hide_cursor() {
+	outb(0x3D4, 0x0A);
+	outb(0x3D5, 0x20);
+}

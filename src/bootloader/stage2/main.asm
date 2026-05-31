@@ -19,7 +19,7 @@ start:
 
     ; load kernel one sector at a time
     mov word [curr_lba], 34
-    mov word [sects_left], 9
+    mov word [sects_left], 20
     mov ax, 0x1000
     mov es, ax
     mov bx, 0
