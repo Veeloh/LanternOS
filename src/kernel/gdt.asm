@@ -4,6 +4,7 @@ global gdt_load
 
 gdt_load:
 	mov eax, [esp + 4]
+	lgdt [eax]
 	mov ax, 0x10
 	mov ds, ax
 	mov es, ax

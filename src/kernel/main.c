@@ -46,8 +46,8 @@ void kernel_main() {
 	}
 	
 	keyboard_init();
-//	timer_init(100);
-//	clock_init(0,0,0);
+	timer_init(100);
+	clock_init(0,0,0);
 
 	//enable interupts
 	__asm__ volatile ("sti");
