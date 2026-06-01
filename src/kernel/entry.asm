@@ -21,6 +21,8 @@ _start:
 
 	mov esp, stack_top
 	xor ebp, ebp
+	extern gdt_init
+	call gdt_init
 ;	push eax ; multiboot magic
 ;	push ebx ; multiboot info pointer
 	call kernel_main
