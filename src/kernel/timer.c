@@ -1,6 +1,7 @@
 #include "timer.h"
 #include "idt.h"
 #include "vga.h"
+#include "clock.h"
 
 static uint32_t ticks = 0;
 
@@ -10,7 +11,7 @@ static void outb(uint16_t port, uint8_t value) {
 
 void timer_handler() {
 	ticks++;
-
+	clock_tick();
 	//send eoi
 	outb(0x20, 0x20);
 }

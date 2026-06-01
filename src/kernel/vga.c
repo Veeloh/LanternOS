@@ -84,3 +84,8 @@ void vga_hide_cursor() {
 	outb(0x3D4, 0x0A);
 	outb(0x3D5, 0x20);
 }
+
+void vga_get_cursor(int* x, int* y) {
+	*x = cursor_x;
+	*y = cursor_y;
+}

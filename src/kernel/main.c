@@ -6,6 +6,7 @@
 #include "keyboard.h"
 #include "shell.h"
 #include "timer.h"
+#include "clock.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -45,6 +46,7 @@ void kernel_main() {
 	
 	keyboard_init();
 	timer_init(100);
+	clock_init(0,0,0);
 
 	//enable interupts
 	__asm__ volatile ("sti");
@@ -67,7 +69,7 @@ void kernel_main() {
 //	vga_set_cursor(0, 1);
 //	vga_print("> ");
 	shell_init();
-	
+	clock_draw();
 
 	while(1) {
 		shell_run();

@@ -31,3 +31,4 @@ void vga_print(const char* str);
 void vga_set_colour(vga_colour fg, vga_colour bg);
 void vga_set_cursor(int x, int y);
 void vga_hide_cursor();
+void vga_get_cursor(int* x, int* y);

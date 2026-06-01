@@ -2,6 +2,7 @@
 #include "vga.h"
 #include "keyboard.h"
 #include "timer.h"
+#include "clock.h"
 
 #define MAX_CMD_LEN 256
 
@@ -31,6 +32,7 @@ static void shell_execute() {
 		vga_print("	help - show this menu\n");
 		vga_print("	clear - clear this screen\n");
 		vga_print("	uptime - shows how long the systems been online\n");
+		vga_print("	settime HH:MM:SS - set the clock.\n");
 	} else if (strcmp(cmd_buffer, "clear") == 0) {
 		vga_clear();
 		vga_set_colour(VGA_YELLOW, VGA_BLACK);
@@ -73,6 +75,23 @@ static void shell_execute() {
 		vga_print("\n");
 		vga_print(buf);
 		vga_print(" seconds.");
+	} else if (cmd_buffer[0]=='s' && cmd_buffer[1]=='e' && cmd_buffer[2]=='t' && cmd_buffer[3]=='t' && cmd_buffer[4]=='i' && cmd_buffer[5]=='m' && cmd_buffer[6]=='e' && cmd_buffer[7]==' ') {
+		//validate num
+		if (cmd_buffer[8] < '0' || cmd_buffer[8] > '9' || cmd_buffer[9] < '0' || cmd_buffer[9] > '9' || cmd_buffer[11] < '0' || cmd_buffer[11] > '9' || cmd_buffer[12] < '0' || cmd_buffer[12] > '9' || cmd_buffer[14] < '0' || cmd_buffer[14] > '9' || cmd_buffer[15] < '0' || cmd_buffer[15] > '9' || cmd_buffer[10] != ':' || cmd_buffer[13] != ':') {
+			vga_print("\nInvalid format, use: settime HH:MM:SS");
+		} else {
+			//parse HH:MM:SS starting at index 8
+			uint8_t h = ((cmd_buffer[8]-'0') * 10) +  (cmd_buffer[9]-'0');
+			uint8_t m = ((cmd_buffer[11]-'0') * 10) +  (cmd_buffer[12]-'0');
+			uint8_t s = ((cmd_buffer[14]-'0') * 10) + (cmd_buffer[15]-'0');
+			if ( h > 23 || m > 59 || s > 59) {
+				vga_print("\nInvalid time. Hours 0-23, Minutes 0-59, Seconds 0-59.");
+			} else {
+				clock_set(h, m, s);
+				clock_draw();
+				vga_print("\nTime set.");
+			}
+		}
 	} else {
 		vga_print("\nUnknown command: ");
 		vga_print(cmd_buffer);
