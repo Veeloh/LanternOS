@@ -37,7 +37,7 @@ void clock_tick() {
 		hours++;
 	}
 	if (hours >= 24) {
-		seconds = 0;
+		hours = 0;
 	}
 	
 	clock_draw();
