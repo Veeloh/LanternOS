@@ -25,7 +25,7 @@ void kernel_main() {
 	vga_set_cursor(30, 12);
 	vga_print("Welcome to LanternOS");
 	vga_set_cursor(38, 13);
-	vga_print("v0.1");
+	vga_print("v0.2");
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 	vga_set_cursor(27, 15);
 	vga_print("Press any key to continue...");

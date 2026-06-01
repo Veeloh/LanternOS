@@ -36,7 +36,7 @@ static void shell_execute() {
 	} else if (strcmp(cmd_buffer, "clear") == 0) {
 		vga_clear();
 		vga_set_colour(VGA_YELLOW, VGA_BLACK);
-		vga_print("LanternOS Shell v0.1\n");
+		vga_print("LanternOS Shell v0.2\n");
 		vga_set_colour(VGA_WHITE, VGA_BLACK);
 	} else if (strcmp(cmd_buffer, "shiggle") == 0) {
 		vga_set_colour(VGA_GREEN, VGA_BLACK);
@@ -109,7 +109,7 @@ static void shell_execute() {
 void shell_init() {
 	vga_clear();
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
-	vga_print("LanternOS Shell v0.1\n");
+	vga_print("LanternOS Shell v0.2\n");
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 	shell_prompt();
 }
