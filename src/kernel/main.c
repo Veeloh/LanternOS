@@ -30,6 +30,7 @@ void kernel_main() {
 	vga_set_cursor(27, 15);
 	vga_print("Press any key to continue...");
 	
+
 	
 	pic_remap();
 	idt_init();
@@ -60,6 +61,7 @@ void kernel_main() {
 	//wait for keypress
 	while(keyboard_getchar() == 0);
 
+
 	//clear and show shell
 //	vga_clear();
 //	vga_set_colour(VGA_YELLOW, VGA_BLACK);
@@ -74,4 +76,5 @@ void kernel_main() {
 	while(1) {
 		shell_run();
 	}
+
 }
