@@ -52,7 +52,7 @@ void* kmalloc(uint32_t size) {
 void kfree(void* ptr) {
 	if (!ptr) return;
 
-	block_header_t* header = (block_header_t*)((uint8_t)ptr - sizeof(block_header_t));
+	block_header_t* header = (block_header_t*)((uint8_t*)ptr - sizeof(block_header_t));
 	header->free = 1;
 
 	//merge adjacent free blocks
