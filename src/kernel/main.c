@@ -7,6 +7,7 @@
 #include "shell.h"
 #include "timer.h"
 #include "clock.h"
+#include "pmm.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -19,8 +20,9 @@ void print(const char* str) {
 }
 
 
-void kernel_main() {
+void kernel_main(unsigned int multiboot_addr) {
 	vga_init();
+	pmm_init(multiboot_addr);
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
 	vga_set_cursor(30, 12);
 	vga_print("Welcome to LanternOS");

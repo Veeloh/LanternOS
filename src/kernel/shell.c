@@ -3,6 +3,7 @@
 #include "keyboard.h"
 #include "timer.h"
 #include "clock.h"
+#include "pmm.h"
 
 #define MAX_CMD_LEN 256
 
@@ -32,7 +33,8 @@ static void shell_execute() {
 		vga_print("	help - show this menu\n");
 		vga_print("	clear - clear this screen\n");
 		vga_print("	uptime - shows how long the systems been online\n");
-		vga_print("	settime HH:MM:SS - set the clock.\n");
+		vga_print("	settime HH:MM:SS - set the clock\n");
+		vga_print("	meminfo - displays info on memory usage\n");
 	} else if (strcmp(cmd_buffer, "clear") == 0) {
 		vga_clear();
 		vga_set_colour(VGA_YELLOW, VGA_BLACK);
@@ -92,7 +94,34 @@ static void shell_execute() {
 				vga_print("\nTime set.");
 			}
 		}
-	} else {
+	} else if (strcmp(cmd_buffer, "meminfo") == 0) {
+		uint32_t free = pmm_free_pages();
+		uint32_t free_mb = (free * 4096) / (1024 * 1024);
+		vga_print("\nFree memory: ");
+		//print free_mb
+		char buf[16];
+		int i = 0;
+		if (free_mb == 0) {
+			buf[i++] = '0';
+		} else {
+			uint32_t tmp = free_mb;
+			while (tmp > 0) {
+				buf[i++] = '0' + (tmp % 10);
+				tmp /= 10;
+			}
+			int a, b;
+			for (a = 0, b = i-1; a < b; a++, b--) {
+				char tmp2 = buf[a];
+				buf[a] = buf[b];
+				buf[b] = tmp2;
+			}
+		}
+		buf[i] = 0;
+		vga_print("\n");
+		vga_print(buf);
+		vga_print(" MB");
+	} 
+	else {
 		vga_print("\nUnknown command: ");
 		vga_print(cmd_buffer);
 	}

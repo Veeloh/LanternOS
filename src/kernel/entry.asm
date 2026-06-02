@@ -18,13 +18,12 @@ extern kernel_main
 _start:
 	;test vga
 	mov dword [0xB8000], 0x2F4F2F4B ;ok in green
-
 	mov esp, stack_top
 	xor ebp, ebp
 	extern gdt_init
 	call gdt_init
 ;	push eax ; multiboot magic
-;	push ebx ; multiboot info pointer
+	push ebx ; multiboot info pointer
 	call kernel_main
 	cli
 	hlt
