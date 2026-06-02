@@ -25,6 +25,44 @@ void heap_init() {
 	heap_start->next = 0;
 }
 
+
 void* kmalloc(uint32_t size) {
-	
+
+	block_header_t* current = heap_start;
+
+	while(current) {
+		if (current->free && current->size >= size) {
+			if (current->size > size + sizeof(block_header_t) + 4) {
+				//split block if large enough
+				block_header_t* new_block = (block_header_t*)((uint8_t*)current + sizeof(block_header_t) + size);
+				new_block->size = current->size - size - sizeof(block_header_t);
+				new_block->free = 1;
+				new_block->next = current->next;
+				current->next = new_block;
+				current->size = size;
+			}
+			current->free = 0;
+			return (void*)((uint8_t*)current + sizeof(block_header_t));
+		}
+		current = current->next;
+	}
+	return 0; //out of memory
+}
+
+void kfree(void* ptr) {
+	if (!ptr) return;
+
+	block_header_t* header = (block_header_t*)((uint8_t)ptr - sizeof(block_header_t));
+	header->free = 1;
+
+	//merge adjacent free blocks
+	block_header_t* current = heap_start;
+	while (current && current->next) {
+		if (current->free && current->next->free) {
+			current->size += sizeof(block_header_t) + current->next->size;
+			current->next = current->next->next;
+		} else {
+			current = current->next;
+		}
+	}
 }
