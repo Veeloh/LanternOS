@@ -11,11 +11,11 @@ BUILD_DIR=build
 #iso image (so exciting)
 #
 
-iso: $(BUILD_DIR)/lanternos.iso
+iso: $(BUILD_DIR)/solos.iso
 
-$(BUILD_DIR)/lanternos.iso: kernel
+$(BUILD_DIR)/solos.iso: kernel
 	cp $(BUILD_DIR)/kernel.elf isodir/boot/kernel.elf
-	grub-mkrescue -o $(BUILD_DIR)/lanternos.iso isodir
+	grub-mkrescue -o $(BUILD_DIR)/solos.iso isodir
 
 #
 #kernel directory

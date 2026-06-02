@@ -24,8 +24,8 @@ void kernel_main(unsigned int multiboot_addr) {
 	vga_init();
 	pmm_init(multiboot_addr);
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
-	vga_set_cursor(30, 12);
-	vga_print("Welcome to LanternOS");
+	vga_set_cursor(32, 12);
+	vga_print("Welcome to SolOS");
 	vga_set_cursor(38, 13);
 	vga_print("v0.2");
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
@@ -54,7 +54,7 @@ void kernel_main(unsigned int multiboot_addr) {
 	//enable interupts
 	__asm__ volatile ("sti");
 
-	print("LanternOS kernel loaded!"); //finally works yippie
+	print("SolOS kernel loaded!"); //finally works yippie
 
 	// trigger a software interrupt to test IDT (works great :P)
 	//	__asm__ volatile ("int $0x80");
