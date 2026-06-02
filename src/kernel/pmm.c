@@ -36,12 +36,16 @@ static void bitmap_clear(uint32_t page) {
 	bitmap[page / 32] &= ~(1 << (page % 32));
 }
 
+static int bitmap_test(uint32_t page) {
+	return bitmap[page / 32] & (1 << (page % 32));
+}
+
 void pmm_init(uint32_t multiboot_addr) {
 	multiboot_info_t* mb = (multiboot_info_t*)multiboot_addr;
 
 	//pass 1 - find highest ram address
 	uint32_t highest = 0;
-	mmap_entry_t mmap = (mmap_entry_t*)mb->mmap_addr;
+	mmap_entry_t* mmap = (mmap_entry_t*)mb->mmap_addr;
 	while ((uint32_t)mmap < mb->mmap_addr + mb->mmap_length) {
 		if (mmap->type == 1 && mmap->addr_high == 0) {
 			uint32_t top = mmap->addr_low + mmap->len_low;
