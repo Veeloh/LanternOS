@@ -9,6 +9,7 @@
 #include "clock.h"
 #include "pmm.h"
 #include "heap.h"
+#include "process.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -25,6 +26,7 @@ void kernel_main(unsigned int multiboot_addr) {
 	vga_init();
 	pmm_init(multiboot_addr);
 	heap_init();
+	process_init();
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
 	vga_set_cursor(32, 12);
 	vga_print("Welcome to SolOS");
