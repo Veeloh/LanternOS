@@ -5,6 +5,7 @@
 #include "clock.h"
 #include "pmm.h"
 #include "heap.h"
+#include "process.h"
 
 #define MAX_CMD_LEN 256
 
@@ -37,6 +38,7 @@ static void shell_execute() {
 		vga_print("	settime HH:MM:SS - set the clock\n");
 		vga_print("	meminfo - displays info on memory usage\n");
 		vga_print("	memtest - tests heaps and memory\n");
+		vga_print("	ps - shows the process status'\n");
 	} else if (strcmp(cmd_buffer, "clear") == 0) {
 		vga_clear();
 		vga_set_colour(VGA_YELLOW, VGA_BLACK);
@@ -145,6 +147,27 @@ static void shell_execute() {
 			vga_set_colour(VGA_RED, VGA_BLACK);
 			vga_print("\nHeap allocation failed, Try Again.");
 			vga_set_colour(VGA_WHITE, VGA_BLACK);
+		}
+	} else if (strcmp(cmd_buffer, "ps") == 0) {
+		vga_print("\nPID\tSTATE\n");
+		for (int i = 0; i < MAX_PROCESSES; i++) {
+			process_t* p = process_get_by_id(i);
+			if (p->state != PROCESS_DEAD) {
+				vga_print("\n");
+				//print PID
+				vga_putchar('0' + p->pid);
+				vga_print("\t");
+				if (p->state == PROCESS_RUNNING) {
+					vga_set_colour(VGA_GREEN, VGA_BLACK);
+					vga_print("RUNNING");
+					vga_set_colour(VGA_WHITE, VGA_BLACK);
+				} else if (p->state == PROCESS_RUNNING) {
+					vga_set_colour(VGA_LIGHT_MAGENTA, VGA_BLACK);
+					vga_print("READY");
+					vga_set_colour(VGA_WHITE, VGA_BLACK);
+				}
+				
+			}
 		}
 	}
 	else {

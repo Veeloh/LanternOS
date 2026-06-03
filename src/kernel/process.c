@@ -61,3 +61,7 @@ void process_schedule() {
 process_t* process_get_current() {
 	return &processes[current_process];
 }
+
+process_t* process_get_by_id(int id) {
+	return &processes[id];
+}

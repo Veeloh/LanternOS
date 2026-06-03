@@ -20,9 +20,10 @@ typedef struct {
 	uint32_t pid;
 	process_state_t state;
 	registers_t regs;
-	uint8_t stack;
+	uint8_t* stack;
 } process_t;
 
 void process_init();
 void process_spawn(void (*entry)());
 void process_schedule();
+process_t* process_get_by_id(int id);
