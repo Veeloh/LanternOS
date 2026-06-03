@@ -12,12 +12,18 @@ void process_init() {
 		processes[i].pid = i;
 		processes[i].stack = 0;
 	}
+
+	//register current execution
+	processes[0].state = PROCESS_RUNNING;
+	process_count = 1;
+	current_process = 0;
 }
 
 void process_spawn(void (*entry)()) {
 	//find a free stack
 	for (int i = 0; i < MAX_PROCESSES; i++) {
 		if (processes[i].state == PROCESS_DEAD) {
+			processes[i].pid = i;
 			//allocate a stack
 			processes[i].stack = (uint8_t*)kmalloc(STACK_SIZE);
 

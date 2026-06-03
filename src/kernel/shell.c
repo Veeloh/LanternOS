@@ -149,19 +149,19 @@ static void shell_execute() {
 			vga_set_colour(VGA_WHITE, VGA_BLACK);
 		}
 	} else if (strcmp(cmd_buffer, "ps") == 0) {
-		vga_print("\nPID\tSTATE\n");
+		vga_print("\nPID   STATE\n");
 		for (int i = 0; i < MAX_PROCESSES; i++) {
 			process_t* p = process_get_by_id(i);
 			if (p->state != PROCESS_DEAD) {
 				vga_print("\n");
 				//print PID
 				vga_putchar('0' + p->pid);
-				vga_print("\t");
+				vga_print("   ");
 				if (p->state == PROCESS_RUNNING) {
 					vga_set_colour(VGA_GREEN, VGA_BLACK);
 					vga_print("RUNNING");
 					vga_set_colour(VGA_WHITE, VGA_BLACK);
-				} else if (p->state == PROCESS_RUNNING) {
+				} else if (p->state == PROCESS_READY) {
 					vga_set_colour(VGA_LIGHT_MAGENTA, VGA_BLACK);
 					vga_print("READY");
 					vga_set_colour(VGA_WHITE, VGA_BLACK);
