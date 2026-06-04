@@ -22,7 +22,16 @@ void print(const char* str) {
 }
 
 void test_process() {
-	while(1);
+	int i = 0;
+	while(1) {
+		i++;
+		if ( i > 10000000) {
+			i = 0;
+			vga_set_colour(VGA_RED, VGA_BLACK);
+			vga_print("P1");
+			vga_set_colour(VGA_WHITE, VGA_BLACK);
+		}
+	}
 }
 
 void kernel_main(unsigned int multiboot_addr) {
@@ -30,7 +39,7 @@ void kernel_main(unsigned int multiboot_addr) {
 	pmm_init(multiboot_addr);
 	heap_init();
 	process_init();
-	process_spawn(test_process);
+//	process_spawn(test_process);
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
 	vga_set_cursor(32, 12);
 	vga_print("Welcome to SolOS");
