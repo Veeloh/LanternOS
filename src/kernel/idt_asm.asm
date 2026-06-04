@@ -26,10 +26,21 @@ keyboard_isr:
 	iret
 
 extern timer_handler
+extern process_get_current
 
 global timer_isr
 timer_isr:
-	pusha
+	pusha ; save reg
+
+	;save esp to currenr process
+	call process_get_current
+	mov [eax + 28], esp
+
 	call timer_handler
+
+	; get new current process
+	call process_get_current
+	mov esp, [eax + 28]
+	
 	popa
 	iret

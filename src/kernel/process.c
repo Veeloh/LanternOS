@@ -29,15 +29,19 @@ void process_spawn(void (*entry)()) {
 
 			//set up registers
 			processes[i].regs.esp = (uint32_t)(processes[i].stack + STACK_SIZE);
-			processes[i].regs.eip = (uint32_t)entry;
-			processes[i].regs.eflags = 0x202; // interupts enable lmao me when she ints my cpu lol
-			processes[i].regs.eax = 0;
-			processes[i].regs.ebx = 0;
-			processes[i].regs.ecx = 0;
-			processes[i].regs.edx = 0;
-			processes[i].regs.esi = 0;
-			processes[i].regs.edi = 0;
-			processes[i].regs.ebp = 0;
+			uint32_t* stack = (uint32_t*)(processes[i].stack + STACK_SIZE);
+			*--stack = 0x202;
+			*--stack = 0x08;
+			*--stack = (uint32_t)entry;
+			*--stack = 0;
+			*--stack = 0;
+			*--stack = 0;
+			*--stack = 0;
+			*--stack = (uint32_t)(processes[i].stack + STACK_SIZE); //esp
+			*--stack = 0;
+			*--stack = 0;
+			*--stack = 0;
+			processes[i].regs.esp = (uint32_t)stack;
 			processes[i].state = PROCESS_READY;
 			process_count++;
 			return;
