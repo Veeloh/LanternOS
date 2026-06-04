@@ -10,6 +10,7 @@
 #include "pmm.h"
 #include "heap.h"
 #include "process.h"
+#include "fat32.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -38,13 +39,14 @@ void kernel_main(unsigned int multiboot_addr) {
 	vga_init();
 	pmm_init(multiboot_addr);
 	heap_init();
+	fat32_init();
 	process_init();
 //	process_spawn(test_process);
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
 	vga_set_cursor(32, 12);
 	vga_print("Welcome to SolOS");
 	vga_set_cursor(38, 13);
-	vga_print("v0.2");
+	vga_print("v0.3");
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 	vga_set_cursor(27, 15);
 	vga_print("Press any key to continue...");

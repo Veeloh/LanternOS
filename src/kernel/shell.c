@@ -6,6 +6,7 @@
 #include "pmm.h"
 #include "heap.h"
 #include "process.h"
+#include "fat32.h"
 
 #define MAX_CMD_LEN 256
 
@@ -39,10 +40,12 @@ static void shell_execute() {
 		vga_print("	meminfo - displays info on memory usage\n");
 		vga_print("	memtest - tests heaps and memory\n");
 		vga_print("	ps - shows the process status'\n");
+		vga_print("	ls - lists directory'\n");
+		vga_print("	cat - reads files such as txt'\n");
 	} else if (strcmp(cmd_buffer, "clear") == 0) {
 		vga_clear();
 		vga_set_colour(VGA_YELLOW, VGA_BLACK);
-		vga_print("SolOS Shell v0.2\n");
+		vga_print("SolOS Shell v0.3\n");
 		vga_set_colour(VGA_WHITE, VGA_BLACK);
 	} else if (strcmp(cmd_buffer, "shiggle") == 0) {
 		vga_set_colour(VGA_GREEN, VGA_BLACK);
@@ -169,6 +172,21 @@ static void shell_execute() {
 				
 			}
 		}
+	} else if (strcmp(cmd_buffer, "ls") == 0) {
+		fat32_list_dir();
+	} else if (cmd_buffer[0]=='c' && cmd_buffer[1]=='a' && cmd_buffer[2]=='t' && cmd_buffer[3]==' ') {
+		uint8_t* buf = (uint8_t*)kmalloc(4096);
+		int bytes = fat32_read_file(cmd_buffer + 4, buf, 4096);
+		vga_print("\nLooking for: ");
+		vga_print(cmd_buffer + 4);
+		if (bytes < 0) {
+			vga_print("\nFile not found!");
+		} else {
+			vga_putchar('\n');
+			for (int i = 0; i < bytes; i++)
+				vga_putchar(buf[i]);
+		}
+		kfree(buf);
 	}
 	else {
 		vga_print("\nUnknown command: ");
@@ -187,7 +205,7 @@ static void shell_execute() {
 void shell_init() {
 	vga_clear();
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
-	vga_print("SolOS Shell v0.2\n");
+	vga_print("SolOS Shell v0.3\n");
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 	shell_prompt();
 }
