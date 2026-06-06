@@ -42,6 +42,7 @@ static void shell_execute() {
 		vga_print("	ps - shows the process status'\n");
 		vga_print("	ls - lists directory'\n");
 		vga_print("	cat - reads files such as txt'\n");
+		vga_print("	syscalltest - tests syscalls (mostly for dev use)\n");
 	} else if (strcmp(cmd_buffer, "clear") == 0) {
 		vga_clear();
 		vga_set_colour(VGA_YELLOW, VGA_BLACK);
@@ -187,6 +188,15 @@ static void shell_execute() {
 				vga_putchar(buf[i]);
 		}
 		kfree(buf);
+	} else if (strcmp(cmd_buffer, "syscalltest") == 0) {
+		vga_print("\n Testing syscall...");
+		__asm__ volatile (
+			"mov $1, %%eax\n"
+			"mov $%0, %%ebx\n"
+			"int $0x80\n"
+			:: "i"("syscall is working.")
+			: "eax", "ebx"
+		);
 	}
 	else {
 		vga_print("\nUnknown command: ");

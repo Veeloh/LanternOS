@@ -1,9 +1,18 @@
-syscall.c: In function ‘sys_exit’:
-syscall.c:10:24: error: implicit declaration of function ‘process_get_current’; did you mean ‘process_get_by_id’? [-Wimplicit-function-declaration]
-   10 |         process_t* p = process_get_current();
-      |                        ^~~~~~~~~~~~~~~~~~~
-      |                        process_get_by_id
-syscall.c:10:24: error: initialization of ‘process_t *’ from ‘int’ makes pointer from integer without a cast [-Wint-conversion]
-make[1]: *** [Makefile:59: /home/matias/SolOS/build/kernel_syscall.o] Error 1
+	-o /home/matias/SolOS/build/kernel.elf
+ld: warning: /home/matias/SolOS/build/kernel.elf has a LOAD segment with RWX permissions
+ld: /home/matias/SolOS/build/kernel_shell.o: in function `shell_execute':
+shell.c:(.text+0xad5): undefined reference to `$.LC48'
+make[1]: *** [Makefile:68: /home/matias/SolOS/build/kernel.elf] Error 1
 make[1]: Leaving directory '/home/matias/SolOS/src/kernel'
 make: *** [Makefile:24: kernel] Error 2
+
+	} else if (strcmp(cmd_buffer, "syscalltest") == 0) {
+		vga_print("\n Testing syscall...");
+		__asm__ volatile (
+			"mov $1, %%eax\n"
+			"mov $%0, %%ebx\n"
+			"int $0x80\n"
+			:: "i"("syscall is working.")
+			: "eax", "ebx"
+		);
+	}
