@@ -44,3 +44,17 @@ timer_isr:
 	
 	popa
 	iret
+
+extern syscall_handler
+
+global syscall_isr
+syscall_isr:
+	pusha
+	push edx
+	push ecx
+	push ebx
+	push eax
+	call syscall_handler
+	add esp, 16
+	popa
+	iret

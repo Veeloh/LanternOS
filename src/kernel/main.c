@@ -11,6 +11,7 @@
 #include "heap.h"
 #include "process.h"
 #include "fat32.h"
+#include "syscall.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -55,6 +56,7 @@ void kernel_main(unsigned int multiboot_addr) {
 	
 	pic_remap();
 	idt_init();
+	syscall_init();
 	vga_hide_cursor();
 	extern char scancode_map[];
 	vga_set_colour(VGA_GREEN, VGA_BLACK);
