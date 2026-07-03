@@ -7,6 +7,7 @@
 #include "heap.h"
 #include "process.h"
 #include "fat32.h"
+#include "elf.h"
 
 #define MAX_CMD_LEN 256
 
@@ -43,6 +44,7 @@ static void shell_execute() {
 		vga_print("	ls - lists directory'\n");
 		vga_print("	cat - reads files such as txt'\n");
 		vga_print("	syscalltest - tests syscalls (mostly for dev use)\n");
+		vga_print("	run <file> - loads and runs an ELF executable\n");
 	} else if (strcmp(cmd_buffer, "clear") == 0) {
 		vga_clear();
 		vga_set_colour(VGA_YELLOW, VGA_BLACK);
@@ -195,6 +197,8 @@ static void shell_execute() {
 			"int $0x80"
 			:: "a"(1), "b"(msg)
 		);
+	} else if (cmd_buffer[0]=='r' && cmd_buffer[1]=='u' && cmd_buffer[2]=='n' && cmd_buffer[3]==' ') {
+		elf_exec(cmd_buffer + 4);
 	}
 	else {
 		vga_print("\nUnknown command: ");

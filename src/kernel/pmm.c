@@ -121,3 +121,18 @@ void pmm_free_page(uint32_t addr) {
 uint32_t pmm_free_pages() {
 	return free_page_count;
 }
+
+
+void pmm_reserve_region(uint32_t start_addr, uint32_t end_addr) {
+	uint32_t start_page = start_addr / PAGE_SIZE;
+	uint32_t end_page = (end_addr + PAGE_SIZE - 1) / PAGE_SIZE;
+
+	if (end_page > total_pages) end_page = total_pages;
+
+	for (uint32_t i = start_page; i < end_page; i++) {
+		if (!bitmap_test(i)) {
+			bitmap_set(i);
+			free_page_count--;
+		}
+	}
+}

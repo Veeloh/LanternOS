@@ -12,6 +12,7 @@
 #include "process.h"
 #include "fat32.h"
 #include "syscall.h"
+#include "elf.h"
 
 void print(const char* str) {
 	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
@@ -39,6 +40,7 @@ void test_process() {
 void kernel_main(unsigned int multiboot_addr) {
 	vga_init();
 	pmm_init(multiboot_addr);
+	pmm_reserve_region(ELF_USER_MIN_ADDR, ELF_USER_MAX_ADDR);
 	heap_init();
 	fat32_init();
 	process_init();
