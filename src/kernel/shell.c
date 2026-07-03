@@ -190,12 +190,10 @@ static void shell_execute() {
 		kfree(buf);
 	} else if (strcmp(cmd_buffer, "syscalltest") == 0) {
 		vga_print("\n Testing syscall...");
+		char* msg = "syscall works.";
 		__asm__ volatile (
-			"mov $1, %%eax\n"
-			"mov $%0, %%ebx\n"
-			"int $0x80\n"
-			:: "i"("syscall is working.")
-			: "eax", "ebx"
+			"int $0x80"
+			:: "a"(1), "b"(msg)
 		);
 	}
 	else {
