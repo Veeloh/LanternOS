@@ -1,39 +1,38 @@
 bits 32
 
 global context_switch
-extern process_get_current
 
-;context_swicth(process old, process new)
-;saves old reg, loads new ones
+; void context_switch(registers_t* old, registers_t* new)
+;
+; Only registers_t.esp (offset 28) is actually used. Everything else
+; a process needs preserved (ebp, ebx, esi, edi) lives on that
+; process's own stack, pushed/popped here - not stored in the struct.
+; This is the standard minimal thread-switch trick: switching esp to
+; a different stack, then `ret`, is enough to resume anywhere, because
+; the return address AND the saved registers are already sitting on
+; that stack from the last time we switched away from it.
 context_switch:
-	;get params
-	mov eax, [esp + 4] ; old process
-	mov edx, [esp + 8] ; new process
+	mov eax, [esp + 4] ; old regs*
+	mov edx, [esp + 8] ; new regs*
 
-	;save old registers
-	mov [eax], eax ; placeholder
-	mov [eax + 4], ebx
-	mov [eax + 8], ecx
-	mov [eax + 12], edx
-	mov [eax + 16], esi
-	mov [eax + 20], edi
-	mov [eax + 24], ebp
-	mov [eax + 28], esp
+	; save the caller's (old process's) callee-saved registers on
+	; its own stack, then save the stack pointer itself.
+	push ebp
+	push ebx
+	push esi
+	push edi
+	mov [eax + 28], esp ; registers_t.esp
 
-	mov ecx, [esp]
-	mov [eax + 36], ecx
+	; switch to the new process's stack and restore its registers.
+	mov esp, [edx + 28] ; registers_t.esp
+	pop edi
+	pop esi
+	pop ebx
+	pop ebp
 
-	;load new process
-	mov ebx, [edx + 4]
-	mov ecx, [edx + 8]
-	mov esi, [edx + 16]
-	mov edi, [edx + 20]
-	mov ebp, [edx + 24]
-	mov esp, [edx + 28]
-
-	;restore eflags
-	push dword [edx + 36]
-	popf
-
-	;jmp to new process
-	jmp dword [edx + 32]
+	; pops the return address that's sitting on the new stack -
+	; either a real return into wherever that process last called
+	; context_switch from, or (for a never-run process) the fake
+	; address process_bootstrap set up in process_spawn().
+	ret
+	
