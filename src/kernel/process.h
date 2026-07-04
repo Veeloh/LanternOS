@@ -21,6 +21,7 @@ typedef struct {
 	process_state_t state;
 	registers_t regs;
 	uint8_t* stack;
+    void (*entry)(void);
 } process_t;
 
 void process_init();
