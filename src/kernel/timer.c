@@ -13,9 +13,12 @@ static void outb(uint16_t port, uint8_t value) {
 void timer_handler() {
 	ticks++;
 	clock_tick();
+	
+	outb(0x20, 0x20);
+ 
 	process_schedule();
 	//send eoi
-	outb(0x20, 0x20);
+	
 }
 
 uint32_t timer_get_ticks() {
