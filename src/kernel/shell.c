@@ -349,6 +349,7 @@ static void shell_execute() {
 
 	if (cmd_len == 0) {
 		shell_prompt();
+		cursor_pos = 0;
 		return;
 	}
 
@@ -358,6 +359,7 @@ static void shell_execute() {
 	if (argc == 0) {
 		shell_prompt();
 		cmd_len = 0;
+		cursor_pos = 0;
 		return;
 	}
 
@@ -378,6 +380,7 @@ static void shell_execute() {
 	vga_putchar('\n');
 	shell_prompt();
 	cmd_len = 0;
+	cursor_pos = 0;
 }
 
 
@@ -396,6 +399,7 @@ void shell_run() {
 	switch (c) {
 	case '\n':
 		vga_putchar('\n');
+		cmd_buffer[cmd_len] = 0; // terminate
 		history_add(cmd_buffer);
 		history_nav = -1;
 		shell_execute();
