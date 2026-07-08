@@ -1,9 +1,12 @@
 #pragma once
 #include <stdint.h>
+#include "multiboot.h"
 
+// NOTE: VGA_WIDTH/VGA_HEIGHT are now computed at runtime from the actual
+// framebuffer resolution GRUB gives us (see vga_init). These are just
+// fallback defaults some old code might reference.
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
-#define VGA_MEMORY 0xB8000
 
 typedef enum {
 	VGA_BLACK			= 0,
@@ -24,11 +27,13 @@ typedef enum {
 	VGA_WHITE			= 15,
 } vga_colour;
 
-void vga_init();
-void vga_clear();
+// Same public API as before - every existing caller (shell.c, elf.c,
+// syscall.c, clock.c, main.c...) needs ZERO changes.
+void vga_init(multiboot_info_t* mbi);   // <-- only signature that changed
+void vga_clear(void);
 void vga_putchar(char c);
 void vga_print(const char* str);
 void vga_set_colour(vga_colour fg, vga_colour bg);
 void vga_set_cursor(int x, int y);
-void vga_hide_cursor();
+void vga_hide_cursor(void);
 void vga_get_cursor(int* x, int* y);

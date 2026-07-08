@@ -1,5 +1,3 @@
-#define VIDEO_MEMORY 0xB8000
-#define WHITE_ON_BLACK 0x0F
 #include "vga.h"
 #include "idt.h"
 #include "pic.h"
@@ -13,16 +11,6 @@
 #include "fat32.h"
 #include "syscall.h"
 #include "elf.h"
-
-void print(const char* str) {
-	unsigned char*video = (unsigned char*)VIDEO_MEMORY;
-
-	while (*str) {
-		*video++ = *str++; //character
-		*video++ = WHITE_ON_BLACK; //colour atribute :P
-		
-	}
-}
 
 void test_process() {
 	int i = 0;
@@ -38,7 +26,7 @@ void test_process() {
 }
 
 void kernel_main(unsigned int multiboot_addr) {
-	vga_init();
+	vga_init((multiboot_info_t*)multiboot_addr);
 	pmm_init(multiboot_addr);
 	pmm_reserve_region(ELF_USER_MIN_ADDR, ELF_USER_MAX_ADDR);
 	heap_init();
@@ -77,7 +65,7 @@ void kernel_main(unsigned int multiboot_addr) {
 	//enable interupts
 	__asm__ volatile ("sti");
 
-	print("SolOS kernel loaded!"); //finally works yippie
+	vga_print("SolOS kernel loaded!"); //finally works yippie
 
 	// trigger a software interrupt to test IDT (works great :P)
 	//	__asm__ volatile ("int $0x80");
