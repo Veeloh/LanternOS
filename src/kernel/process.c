@@ -50,33 +50,38 @@ void process_init() {
 	current_process = 0;
 }
 
-void process_spawn(void (*entry)()) {
-	//find a free stack
+// process.c
+int process_spawn(void (*entry)()) {
 	for (int i = 0; i < MAX_PROCESSES; i++) {
 		if (processes[i].state == PROCESS_DEAD) {
 			processes[i].pid = i;
 			processes[i].entry = entry;
-			//allocate a stack
 			processes[i].stack = (uint8_t*)kmalloc(STACK_SIZE);
 
-			// Build a stack that looks like this process already
-			// called context_switch once and is just about to
-			// `ret` into process_bootstrap - so the very first
-			// real context_switch into this process just works,
-			// no special-casing needed for "never run before".
 			uint32_t* sp = (uint32_t*)(processes[i].stack + STACK_SIZE);
-			*--sp = (uint32_t)process_bootstrap; // fake return address
-			*--sp = 0; // ebp
-			*--sp = 0; // ebx
-			*--sp = 0; // esi
-			*--sp = 0; // edi
+			*--sp = (uint32_t)process_bootstrap;
+			*--sp = 0; *--sp = 0; *--sp = 0; *--sp = 0;
 
 			processes[i].regs.esp = (uint32_t)sp;
 			processes[i].state = PROCESS_READY;
 			process_count++;
-			return;
+			return i;          // <-- was void before; callers need this pid
 		}
 	}
+	return -1;                 // no free slot
+}
+
+void process_kill(int pid) {
+	if (pid < 0 || pid >= MAX_PROCESSES) return;
+	if (pid == current_process) return;             // can't be killing yourself here
+	if (processes[pid].state == PROCESS_DEAD) return;
+
+	processes[pid].state = PROCESS_DEAD;
+	if (processes[pid].stack) {
+		kfree(processes[pid].stack);
+		processes[pid].stack = 0;
+	}
+	process_count--;
 }
 
 void process_schedule() {
