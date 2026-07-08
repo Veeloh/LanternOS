@@ -26,9 +26,9 @@ align 4
 	dd 0        ; entry_addr
 	; extra fields required because bit2 of flags is set:
 	dd 0        ; mode_type: 0 = linear graphics framebuffer (1 = EGA text)
-	dd 1024     ; width
-	dd 768      ; height
-	dd 32       ; depth (bits per pixel)
+	dd 0        ; width: 0 = no preference, let GRUB pick what's available
+	dd 0        ; height: 0 = no preference
+	dd 32       ; depth: prefer 32bpp, but GRUB will fall back if unavailable
 
 section .text
 global _start
