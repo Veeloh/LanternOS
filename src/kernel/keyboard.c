@@ -89,50 +89,45 @@ static void outb(uint16_t port, uint8_t value) {
 	__asm__ volatile ("outb %0, %1" :: "a"(value), "Nd"(port));
 }
 
-void keyboard_handler() {
-	//test code to see if this is even firing
-//	vga_set_colour(VGA_RED, VGA_BLACK);
-//	vga_set_cursor(0,0);
-//	vga_print("KEY!");
-	uint8_t scancode = inb(KEYBOARD_PORT);
-	//shift pressed
-	if (scancode == 0x2A || scancode == 0x36) {
-		shift_pressed = 1;
-		outb(0x20, 0x20);
-		return;
-	}
-	//shift released
-	if (scancode == 0xAA || scancode == 0xB6) {
-		shift_pressed = 0;
-		outb(0x20, 0x20);
-		return;
-	}
-	
-	if (scancode >= 0x80) {
-		outb(0x20, 0x20);
-		return;
-	}
-	
-	vga_set_colour(VGA_WHITE, VGA_BLACK);
+static int ctrl_pressed = 0;
+static int extended = 0;
 
-	
-	char c;
-	if (shift_pressed) {
-		c = scancode_map_shift[scancode];
-	} else {
-		c = scancode_map[scancode];
+void keyboard_handler() {
+	uint8_t scancode = inb(KEYBOARD_PORT);
+
+	if (scancode == 0xE0) { extended = 1; outb(0x20, 0x20); return; }
+
+	if (scancode == 0x1D) { ctrl_pressed = 1; outb(0x20, 0x20); return; }
+	if (scancode == 0x9D) { ctrl_pressed = 0; outb(0x20, 0x20); return; }
+
+	if (scancode == 0x2A || scancode == 0x36) { shift_pressed = 1; outb(0x20, 0x20); return; }
+	if (scancode == 0xAA || scancode == 0xB6) { shift_pressed = 0; outb(0x20, 0x20); return; }
+
+	if (extended) {
+		extended = 0;
+		if (!(scancode & 0x80)) { // ignore key-release half
+			switch (scancode) {
+				case 0x48: last_char = KEY_UP;    break;
+				case 0x50: last_char = KEY_DOWN;  break;
+				case 0x4B: last_char = KEY_LEFT;  break;
+				case 0x4D: last_char = KEY_RIGHT; break;
+			}
+		}
+		outb(0x20, 0x20);
+		return;
 	}
-	
-	if (c) {
-		if (c >= 32 && c <= 126 || c == '\b' || c == '\n') {
-			last_char = c;
-		}	
-	//	vga_putchar(c);
-	} else {
-		vga_putchar('?');
+
+	if (scancode >= 0x80) { outb(0x20, 0x20); return; } // release
+
+	if (ctrl_pressed && scancode == 0x2E) { // 'c'
+		last_char = KEY_CTRL_C;
+		outb(0x20, 0x20);
+		return;
 	}
-	
-	//send eoi
+
+	char c = shift_pressed ? scancode_map_shift[scancode] : scancode_map[scancode];
+	if (c && ((c >= 32 && c <= 126) || c == '\b' || c == '\n')) last_char = c;
+
 	outb(0x20, 0x20);
 }
 
