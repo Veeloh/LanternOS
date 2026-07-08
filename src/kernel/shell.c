@@ -301,7 +301,21 @@ static void cmd_run(int argc, char** argv) {
 		vga_print("\nUsage: run <file>");
 		return;
 	}
-	elf_exec(argv[1]);
+
+	int pid = elf_exec(argv[1]);
+	if (pid < 0) return;
+
+	process_t* p = process_get_by_id(pid);
+	while (p->state != PROCESS_DEAD) {
+		char c = keyboard_getchar();
+		if (c == KEY_CTRL_C) {
+			process_kill(pid);
+			vga_print("\n^C\n");
+			break;
+		}
+		// nothing else to do here - the timer IRQ preempts this loop
+		// on its own and lets `pid` actually run in between iterations
+	}
 }
 
 // command table - add a new command by adding one line here, no need to
