@@ -15,6 +15,70 @@
 static char cmd_buffer[MAX_CMD_LEN];
 static int cmd_len = 0;
 
+#define MAX_HISTORY 16
+
+static int cursor_pos = 0;
+static char history[MAX_HISTORY][MAX_CMD_LEN];
+static int history_count = 0;
+static int history_nav = -1;
+static char saved_line[MAX_CMD_LEN];
+
+static void cursor_left()  { if (cursor_pos > 0) { vga_putchar('\b'); cursor_pos--; } }
+static void cursor_right() { if (cursor_pos < cmd_len) { vga_putchar(cmd_buffer[cursor_pos]); cursor_pos++; } }
+
+static void insert_char(char c) {
+	if (cmd_len >= MAX_CMD_LEN - 1) return;
+	int cp = cursor_pos;
+	for (int i = cmd_len; i > cp; i--) cmd_buffer[i] = cmd_buffer[i - 1];
+	cmd_buffer[cp] = c;
+	cmd_len++;
+	for (int i = cp; i < cmd_len; i++) vga_putchar(cmd_buffer[i]);
+	int back = cmd_len - (cp + 1);
+	for (int i = 0; i < back; i++) vga_putchar('\b');
+	cursor_pos = cp + 1;
+}
+
+static void delete_char_before_cursor() {
+	if (cursor_pos == 0) return;
+	for (int i = cursor_pos - 1; i < cmd_len - 1; i++) cmd_buffer[i] = cmd_buffer[i + 1];
+	cmd_len--;
+	cursor_pos--;
+	vga_putchar('\b');
+	for (int i = cursor_pos; i < cmd_len; i++) vga_putchar(cmd_buffer[i]);
+	vga_putchar(' '); // erase old trailing char
+	for (int i = 0; i < cmd_len - cursor_pos + 1; i++) vga_putchar('\b');
+}
+
+static void clear_line_display() {
+	while (cursor_pos < cmd_len) cursor_right();
+	while (cmd_len > 0) {
+		vga_putchar('\b'); vga_putchar(' '); vga_putchar('\b');
+		cmd_len--;
+	}
+	cursor_pos = 0;
+}
+
+static void load_line(const char* s) {
+	clear_line_display();
+	int i = 0;
+	while (s[i] && i < MAX_CMD_LEN - 1) { cmd_buffer[i] = s[i]; vga_putchar(s[i]); i++; }
+	cmd_len = i;
+	cursor_pos = i;
+}
+
+static void history_add(const char* line) {
+	if (line[0] == 0) return;
+	if (history_count == MAX_HISTORY) {
+		for (int i = 1; i < MAX_HISTORY; i++)
+			for (int j = 0; j < MAX_CMD_LEN; j++) history[i - 1][j] = history[i][j];
+		history_count--;
+	}
+	int i = 0;
+	while (line[i] && i < MAX_CMD_LEN - 1) { history[history_count][i] = line[i]; i++; }
+	history[history_count][i] = 0;
+	history_count++;
+}
+
 static void shell_prompt() {
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 	vga_print("> ");
@@ -329,19 +393,41 @@ void shell_run() {
 	char c = keyboard_getchar();
 	if (c == 0) return;
 
-	if (c == '\n') {
+	switch (c) {
+	case '\n':
 		vga_putchar('\n');
+		history_add(cmd_buffer);
+		history_nav = -1;
 		shell_execute();
-	} else if (c == '\b') {
-		if (cmd_len > 0) {
-			cmd_len--;
-			//erase character on screen lmao
-			vga_putchar('\b');
-			vga_putchar(' ');
-			vga_putchar('\b');
+		return;
+	case '\b':
+		delete_char_before_cursor();
+		return;
+	case KEY_LEFT:  cursor_left();  return;
+	case KEY_RIGHT: cursor_right(); return;
+	case KEY_CTRL_C:
+		vga_print("^C\n");
+		cmd_len = 0; cursor_pos = 0; history_nav = -1;
+		shell_prompt();
+		return;
+	case KEY_UP:
+		if (history_count == 0) return;
+		if (history_nav == -1) {
+			int i = 0;
+			while (i < cmd_len) { saved_line[i] = cmd_buffer[i]; i++; }
+			saved_line[i] = 0;
+			history_nav = history_count;
 		}
-	} else if (cmd_len < MAX_CMD_LEN - 1) {
-		cmd_buffer[cmd_len++] = c;
-		vga_putchar(c);
+		if (history_nav > 0) load_line(history[--history_nav]);
+		return;
+	case KEY_DOWN:
+		if (history_nav == -1) return;
+		history_nav++;
+		if (history_nav >= history_count) { history_nav = -1; load_line(saved_line); }
+		else load_line(history[history_nav]);
+		return;
+	default:
+		insert_char(c);
+		return;
 	}
 }
