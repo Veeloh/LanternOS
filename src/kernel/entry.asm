@@ -13,6 +13,17 @@ align 4
 	dd MULTIBOOT_MAGIC
 	dd MULTIBOOT_FLAGS
 	dd MULTIBOOT_CHECKSUM
+	; a.out kludge fields - GRUB's multiboot loader reads the header as a
+	; fixed-offset struct and expects these 5 dwords to be physically
+	; present even when bit16 (aout kludge) is NOT set - it just ignores
+	; their values in that case. Omitting them shifts every field after,
+	; so mode_type/width/height/depth get read from garbage past the
+	; header. Values themselves don't matter here, just their presence.
+	dd 0        ; header_addr
+	dd 0        ; load_addr
+	dd 0        ; load_end_addr
+	dd 0        ; bss_end_addr
+	dd 0        ; entry_addr
 	; extra fields required because bit2 of flags is set:
 	dd 0        ; mode_type: 0 = linear graphics framebuffer (1 = EGA text)
 	dd 1024     ; width
