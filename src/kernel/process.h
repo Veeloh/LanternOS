@@ -25,7 +25,8 @@ typedef struct {
 } process_t;
 
 void process_init();
-void process_spawn(void (*entry)());
+int process_spawn(void (*entry)());
+void process_kill(int pid);
 void process_schedule();
 process_t* process_get_by_id(int id);
 process_t* process_get_current();

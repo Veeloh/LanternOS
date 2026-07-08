@@ -2,6 +2,7 @@
 #include "fat32.h"
 #include "heap.h"
 #include "vga.h"
+#include "process.h"
 
 #define ELF_MAX_FILE_SIZE (256 * 1024) // bump if you start linking bigger programs
 
@@ -92,6 +93,8 @@ uint32_t elf_load(uint8_t* image, uint32_t size) {
 	}
 
 	return hdr->e_entry;
+
+}
  
 int elf_exec(const char* filename) {
 	uint8_t* buf = (uint8_t*)kmalloc(ELF_MAX_FILE_SIZE);

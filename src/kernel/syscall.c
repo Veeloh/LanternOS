@@ -7,10 +7,10 @@
 extern void syscall_isr();
 
 static void  sys_exit(int code) {
-	process_t* p = process_get_current();
-	p->state = PROCESS_DEAD;
-	//halt for now
-	while(1);
+	(void)code;
+	process_get_current()->state = PROCESS_DEAD;
+	process_schedule(); //hand off
+	while (1) __asm__ volatile ("hlt");
 }
 
 static void sys_write(const char* str) {
