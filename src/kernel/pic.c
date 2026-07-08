@@ -20,10 +20,6 @@ static uint8_t inb(uint16_t port) {
 }
 
 void pic_remap() {
-	//save masks
-	uint8_t mask1 = inb(PIC1_DATA);
-	uint8_t mask2 = inb(PIC2_DATA);
-
 	// start init sequence
 	outb(PIC1_COMMAND, 0x11);
 	outb(PIC2_COMMAND, 0x11);
@@ -41,7 +37,8 @@ void pic_remap() {
 	outb(PIC1_DATA, 0x01);
 	outb(PIC2_DATA, 0x01);
 
-	// restore masks
-	outb(PIC1_DATA, mask1);
-	outb(PIC2_DATA, mask2);
+	// explicitly set masks instead of trusting inherited firmware state:
+	// unmask IRQ0 (timer), IRQ1 (keyboard), IRQ2 (cascade); mask the rest
+	outb(PIC1_DATA, 0xF8); // 11111000
+	outb(PIC2_DATA, 0xFF); // mask everything on slave for now
 }
