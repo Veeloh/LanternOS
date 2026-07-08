@@ -33,14 +33,14 @@ timer_isr:
 	pusha ; save reg
 
 	;save esp to currenr process
-	call process_get_current
-	mov [eax + 36], esp
+;	call process_get_current
+;	mov [eax + 36], esp
 
 	call timer_handler
 
 	; get new current process
-	call process_get_current
-	mov esp, [eax + 36]
+;	call process_get_current
+;	mov esp, [eax + 36]
 	
 	popa
 	iret
