@@ -92,8 +92,7 @@ uint32_t elf_load(uint8_t* image, uint32_t size) {
 	}
 
 	return hdr->e_entry;
-}
-
+ 
 int elf_exec(const char* filename) {
 	uint8_t* buf = (uint8_t*)kmalloc(ELF_MAX_FILE_SIZE);
 	if (!buf) {
@@ -110,9 +109,6 @@ int elf_exec(const char* filename) {
 	}
 
 	uint32_t entry = elf_load(buf, (uint32_t)bytes);
-
-	// segments have already been copied to their final addresses,
-	// the raw file buffer isn't needed anymore.
 	kfree(buf);
 
 	if (entry == 0) {
@@ -120,20 +116,12 @@ int elf_exec(const char* filename) {
 		return -1;
 	}
 
+	int pid = process_spawn((void (*)())entry);
+	if (pid < 0) {
+		vga_print("\nelf: no free process slot");
+		return -1;
+	}
+
 	vga_print("\nelf: jumping to entry point...\n");
-
-	// NOTE: this is a direct call, not a real process launch.
-	// process_spawn() exists for that, but context_switch (scheduler.asm)
-	// is never actually invoked anywhere yet (process_schedule() only
-	// flips state flags) and process_spawn()'s stack frame doesn't line
-	// up with what context_switch reads (eip/eflags are never set in
-	// the process_t struct). So for now we just call the entry point
-	// like a function - it runs in ring 0, on the kernel's stack, and
-	// the kernel resumes once it returns (or hangs forever if it loops,
-	// same as test_process() does in main.c).
-	void (*entry_point)() = (void (*)())entry;
-	entry_point();
-
-	vga_print("\nelf: program returned");
-	return 0;
+	return pid;   // caller now gets a real pid, not just 0/-1
 }
