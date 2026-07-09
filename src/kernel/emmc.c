@@ -13,6 +13,7 @@
 #define SDHCI_COMMAND          0x0E
 #define SDHCI_RESPONSE0        0x10
 #define SDHCI_PRESENT_STATE    0x24
+#define SDHCI_HOST_CONTROL     0x28
 #define SDHCI_POWER_CONTROL    0x29
 #define SDHCI_CLOCK_CONTROL    0x2C
 #define SDHCI_TIMEOUT_CONTROL  0x2E
@@ -33,6 +34,15 @@
 #define CLOCK_SD_EN            (1u << 2)
 
 #define SRESET_ALL              (1u << 0)
+
+// Host Control register (0x28) bits 6-7. eMMC is soldered to the
+// board with no physical card-detect switch, so the controller's
+// hardware card-detect line floats/reads "not present". Without
+// these bits the controller refuses to latch SD_BUS_POWER (and
+// therefore never enables the clock or responds to commands) because
+// it thinks there's no card to power up.
+#define HC_CARD_DETECT_SIGNAL_SEL  (1u << 6) // 1 = use test level below instead of physical SDCD# pin
+#define HC_CARD_DETECT_TEST_LEVEL  (1u << 7) // 1 = pretend a card is always inserted
 
 static volatile uint8_t* base = 0;
 static uint32_t rca = 0; // relative card address, assigned by us during init
@@ -58,6 +68,54 @@ static int wait32_clear(uint32_t off, uint32_t mask, uint32_t timeout) {
 }
 
 static void spin(uint32_t n) { for (volatile uint32_t i = 0; i < n; i++); }
+
+static uint8_t pci_cfg_read8(pci_device_t* dev, uint8_t offset) {
+	uint32_t dword = pci_config_read32(dev->bus, dev->device, dev->function, offset & ~0x3);
+	return (dword >> ((offset & 0x3) * 8)) & 0xFF;
+}
+static uint16_t pci_cfg_read16(pci_device_t* dev, uint8_t offset) {
+	uint32_t dword = pci_config_read32(dev->bus, dev->device, dev->function, offset & ~0x3);
+	return (dword >> ((offset & 0x3) * 8)) & 0xFFFF;
+}
+static void pci_cfg_write16(pci_device_t* dev, uint8_t offset, uint16_t val) {
+	uint8_t aligned = offset & ~0x3;
+	uint32_t dword = pci_config_read32(dev->bus, dev->device, dev->function, aligned);
+	uint32_t shift = (offset & 0x3) * 8;
+	dword = (dword & ~(0xFFFFu << shift)) | ((uint32_t)val << shift);
+	pci_config_write32(dev->bus, dev->device, dev->function, aligned, dword);
+}
+
+// AMD's SDHC device 0x7906 has a documented hardware erratum (see
+// amd_sdhci_reset() in Linux's sdhci-pci-core.c): a plain SDHCI
+// software reset (SDHCI_SOFTWARE_RESET / offset 0x2F) is NOT enough to
+// clear its internal state - it can get stuck with the DATA lines
+// permanently latched at all-zeros, which reads to us as commands
+// mysteriously timing out even though the reset bit itself clears
+// fine. Linux works around this with a full PCI power-state cycle
+// (D3cold -> D0) before touching the controller further. We don't
+// have ACPI D3cold here, but a D3hot -> D0 cycle through the device's
+// own PCI Power Management capability forces the same kind of hard
+// internal reset on this chip and is doable from pure config space.
+static void amd_7906_power_cycle(pci_device_t* dev) {
+	uint16_t status = pci_cfg_read16(dev, 0x06);
+	if (!(status & (1u << 4))) return; // no capabilities list - nothing we can do from software
+
+	uint8_t cap_ptr = pci_cfg_read8(dev, 0x34) & 0xFC;
+	while (cap_ptr) {
+		if (pci_cfg_read8(dev, cap_ptr) == 0x01) { // PCI Power Management capability ID
+			uint8_t pmcsr_off = cap_ptr + 4;
+			uint16_t pmcsr = pci_cfg_read16(dev, pmcsr_off);
+			pci_cfg_write16(dev, pmcsr_off, (pmcsr & ~0x3u) | 0x3u); // -> D3hot
+			spin(500000);
+			pmcsr = pci_cfg_read16(dev, pmcsr_off);
+			pci_cfg_write16(dev, pmcsr_off, pmcsr & ~0x3u);          // -> D0
+			spin(500000); // let the controller fully wake and its card-detect logic settle
+			return;
+		}
+		cap_ptr = pci_cfg_read8(dev, cap_ptr + 1) & 0xFC;
+	}
+	// no PM capability found - the SDHCI software reset is our only remaining option
+}
 
 
 static void print_hex16(uint16_t v) {
@@ -120,6 +178,11 @@ int emmc_init(pci_device_t* dev) {
 	if (!bar0) { vga_print("\nemmc: no BAR0"); return 0; }
 	base = (volatile uint8_t*)bar0;
 
+	if (dev->vendor_id == 0x1022 && dev->device_id == 0x7906) {
+		vga_print("\nemmc: AMD 0x7906 detected, applying hard-reset erratum workaround");
+		amd_7906_power_cycle(dev);
+	}
+
 	w8(SDHCI_SOFTWARE_RESET, SRESET_ALL);
 	if (!wait8_clear(SDHCI_SOFTWARE_RESET, SRESET_ALL, 1000000)) {
 		vga_print("\nemmc: reset never completed"); return 0;
@@ -127,8 +190,28 @@ int emmc_init(pci_device_t* dev) {
 	w16(SDHCI_NORMAL_INT_STAT_EN, 0xFFFF); // unmask every normal status bit - we're polling, not using real IRQs
 	w16(SDHCI_ERROR_INT_STAT_EN, 0xFFFF);  // unmask error bits too, so bit15 (our INT_ERROR) actually latches on failure
 
+	// eMMC has no physical card-detect pin - force the controller to
+	// treat a card as always present, or SD_BUS_POWER below will
+	// silently refuse to latch (this is what was happening: power_ctrl
+	// read back 0x0E instead of 0x0F, and everything downstream timed
+	// out because the clock/commands never really went live).
+	w8(SDHCI_HOST_CONTROL, r8(SDHCI_HOST_CONTROL) | HC_CARD_DETECT_SIGNAL_SEL | HC_CARD_DETECT_TEST_LEVEL);
+
 	w8(SDHCI_POWER_CONTROL, 0x0F);   // bus power on, 3.3V - do this FIRST
 	spin(100000);                     // let power rail settle
+
+	if (!(r8(SDHCI_POWER_CONTROL) & 0x01)) {
+		// 3.3V didn't latch - controller rejected the voltage (soldered
+		// eMMC is very often fixed to 1.8V I/O with no 3.3V rail at
+		// all). Retry power-on at 1.8V (voltage select 101b).
+		vga_print("\nemmc: 3.3V power-on rejected, retrying at 1.8V");
+		w8(SDHCI_POWER_CONTROL, 0x0B);
+		spin(100000);
+		if (!(r8(SDHCI_POWER_CONTROL) & 0x01)) {
+			vga_print("\nemmc: bus power never latched at any voltage");
+			return 0;
+		}
+	}
 
 	// Identification-speed clock (~400kHz) - cards won't respond
 	// reliably above this until CMD1-CMD3 have negotiated further.
