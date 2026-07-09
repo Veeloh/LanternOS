@@ -30,5 +30,5 @@ void _start() {
 	// sys_exit halts the process (see sys_exit() in syscall.c - it
 	// marks the process dead and spins forever), so we never get
 	// here. This is just a safety net in case that ever changes.
-	while (1);
+//	while (1);
 }
