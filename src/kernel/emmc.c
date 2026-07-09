@@ -89,6 +89,7 @@ static int emmc_send_cmd(uint8_t cmd_index, uint32_t arg, int resp_type, int dat
 	uint16_t cmd_reg = (cmd_index << 8);
 	if (resp_type == 1) cmd_reg |= (1 << 0);                       // R2: 136-bit
 	if (resp_type == 2) cmd_reg |= (2 << 0) | (1 << 4) | (1 << 3); // R1: 48-bit + index/crc check
+	if (resp_type == 3) cmd_reg |= (2 << 0);    
 	if (data) cmd_reg |= (1 << 5); // data present
 
 	w16(SDHCI_NORMAL_INT_STAT, 0xFFFF); // clear stale status
@@ -124,9 +125,9 @@ int emmc_init(pci_device_t* dev) {
 		vga_print("\nemmc: reset never completed"); return 0;
 	}
 	w16(SDHCI_NORMAL_INT_STAT_EN, 0xFFFF); // unmask every normal status bit - we're polling, not using real IRQs
-w16(SDHCI_ERROR_INT_STAT_EN, 0xFFFF);  // unmask error bits too, so bit15 (our INT_ERROR) actually latches on failure
+	w16(SDHCI_ERROR_INT_STAT_EN, 0xFFFF);  // unmask error bits too, so bit15 (our INT_ERROR) actually latches on failure
 
-w8(SDHCI_POWER_CONTROL, 0x0F);   // bus power on, 3.3V - do this FIRST
+	w8(SDHCI_POWER_CONTROL, 0x0F);   // bus power on, 3.3V - do this FIRST
 	spin(100000);                     // let power rail settle
 
 	// Identification-speed clock (~400kHz) - cards won't respond
@@ -148,7 +149,7 @@ w8(SDHCI_POWER_CONTROL, 0x0F);   // bus power on, 3.3V - do this FIRST
 	uint32_t ocr_arg = 0x40FF8080; // sector/high-capacity mode + full voltage window
 	int ready = 0;
 	for (int i = 0; i < 100; i++) {
-		if (!emmc_send_cmd(1, ocr_arg, 2, 0)) { vga_print("\nemmc: CMD1 failed"); return 0; }
+		if (!emmc_send_cmd(1, ocr_arg, 3, 0)) { vga_print("\nemmc: CMD1 failed"); return 0; }
 		if (r32(SDHCI_RESPONSE0) & (1u << 31)) { ready = 1; break; }
 		spin(50000);
 	}
