@@ -3,7 +3,7 @@
 #include "ahci.h"
 #include "nvme.h"
 #include "vga.h"
-	#include "emmc.h"
+#include "emmc.h"
 
 #define SECTOR_SIZE 512
 #define ATA_DATA    0x1F0
@@ -64,25 +64,22 @@ disk_driver_t disk_init(void) {
 		vga_print("\ndisk: NVMe init failed, trying other options");
 	}
 
+	
+		if (emmc_dev) {
+			vga_print("\ndisk: eMMC/SDHCI controller found, initializing...");
+			if (emmc_init(emmc_dev)) {
+				vga_print("\ndisk: using eMMC driver");
+				active_driver = DISK_EMMC;
+				return active_driver;
+			}
+			vga_print("\ndisk: eMMC init failed, trying other options");
+		}
+	
+
 	if (ide_dev) {
 		vga_print("\ndisk: using legacy IDE driver");
 		active_driver = DISK_IDE;
 		return active_driver;
-	}
-
-
-// ...
-	
-	// ...place this check wherever you want it in priority - your
-	// laptop will only ever have this one populated anyway...
-	if (emmc_dev) {
-		vga_print("\ndisk: eMMC/SDHCI controller found, initializing...");
-		if (emmc_init(emmc_dev)) {
-			vga_print("\ndisk: using eMMC driver");
-			active_driver = DISK_EMMC;
-			return active_driver;
-		}
-		vga_print("\ndisk: eMMC init failed, trying other options");
 	}
 
 	vga_print("\ndisk: WARNING - no supported storage controller found!");
