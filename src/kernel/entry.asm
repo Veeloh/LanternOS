@@ -1,34 +1,39 @@
 bits 32
 
-; multi boot header - grub looks for this magic signature
-MULTIBOOT_MAGIC		equ 0x1BADB002
-; bit0 = page-align modules, bit1 = provide memory info,
-; bit2 = provide a video mode (REQUIRED so GRUB gives us a real
-; linear framebuffer instead of assuming legacy VGA text mode exists)
-MULTIBOOT_FLAGS		equ 0x00000007
-MULTIBOOT_CHECKSUM	equ -(MULTIBOOT_MAGIC + MULTIBOOT_FLAGS)
+; Multiboot 2 header - grub looks for this magic signature.
+; We're on Multiboot 2 (not 1) specifically so GRUB gives us ACPI's RSDP
+; as a tag (works under both legacy BIOS and UEFI/OVMF) instead of us
+; having to find it ourselves via a legacy-BIOS-only memory scan.
+; Spec: https://www.gnu.org/software/grub/manual/multiboot2/multiboot.html
+MULTIBOOT2_MAGIC	equ 0xE85250D6
+MULTIBOOT2_ARCH		equ 0            ; 0 = i386 protected mode
+MULTIBOOT2_HDR_LEN	equ (multiboot_header_end - multiboot_header)
+MULTIBOOT2_CHECKSUM	equ -(MULTIBOOT2_MAGIC + MULTIBOOT2_ARCH + MULTIBOOT2_HDR_LEN)
 
 section .multiboot
-align 4
-	dd MULTIBOOT_MAGIC
-	dd MULTIBOOT_FLAGS
-	dd MULTIBOOT_CHECKSUM
-	; a.out kludge fields - GRUB's multiboot loader reads the header as a
-	; fixed-offset struct and expects these 5 dwords to be physically
-	; present even when bit16 (aout kludge) is NOT set - it just ignores
-	; their values in that case. Omitting them shifts every field after,
-	; so mode_type/width/height/depth get read from garbage past the
-	; header. Values themselves don't matter here, just their presence.
-	dd 0        ; header_addr
-	dd 0        ; load_addr
-	dd 0        ; load_end_addr
-	dd 0        ; bss_end_addr
-	dd 0        ; entry_addr
-	; extra fields required because bit2 of flags is set:
-	dd 0        ; mode_type: 0 = linear graphics framebuffer (1 = EGA text)
-	dd 0        ; width: 0 = no preference, let GRUB pick what's available
+align 8
+multiboot_header:
+	dd MULTIBOOT2_MAGIC
+	dd MULTIBOOT2_ARCH
+	dd MULTIBOOT2_HDR_LEN
+	dd MULTIBOOT2_CHECKSUM
+
+	; framebuffer request tag (type 5) - ask GRUB for a real linear
+	; framebuffer instead of assuming legacy VGA text mode exists.
+	align 8
+	dw 5        ; type = framebuffer
+	dw 0        ; flags
+	dd 20       ; size (tag header + 3 dwords below)
+	dd 0        ; width:  0 = no preference, let GRUB pick
 	dd 0        ; height: 0 = no preference
-	dd 32       ; depth: prefer 32bpp, but GRUB will fall back if unavailable
+	dd 32       ; depth:  prefer 32bpp, GRUB falls back if unavailable
+
+	; end tag (type 0) - terminates the tag list
+	align 8
+	dw 0
+	dw 0
+	dd 8
+multiboot_header_end:
 
 section .text
 global _start
