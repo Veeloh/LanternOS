@@ -1,4 +1,5 @@
 #include "pmm.h"
+#include "multiboot.h"
 
 extern uint32_t kernel_end;
 
@@ -6,27 +7,6 @@ static uint32_t* bitmap = 0;
 static uint32_t total_pages = 0;
 static uint32_t free_page_count = 0;
 
-typedef struct {
-	uint32_t size;
-	uint32_t addr_low;
-	uint32_t addr_high;
-	uint32_t len_low;
-	uint32_t len_high;
-	uint32_t type;
-} __attribute__((packed)) mmap_entry_t;
-
-typedef struct {
-	uint32_t flags;
-	uint32_t mem_lower;
-	uint32_t mem_upper;
-	uint32_t boot_device;
-	uint32_t cmdline;
-	uint32_t mods_count;
-	uint32_t mods_addr;
-	uint32_t syms[4];
-	uint32_t mmap_length;
-	uint32_t mmap_addr;
-} __attribute__((packed)) multiboot_info_t;
 
 static void bitmap_set(uint32_t page) {
 	bitmap[page / 32] |= (1 << (page % 32));
@@ -41,44 +21,40 @@ static int bitmap_test(uint32_t page) {
 }
 
 void pmm_init(uint32_t multiboot_addr) {
-	multiboot_info_t* mb = (multiboot_info_t*)multiboot_addr;
+	mb2_tag_mmap_t* mmap_tag = (mb2_tag_mmap_t*)mb2_find_tag(multiboot_addr, MB2_TAG_MMAP);
+	uint32_t entry_count = mmap_tag ? (mmap_tag->size - sizeof(mb2_tag_mmap_t)) / mmap_tag->entry_size : 0;
 
 	//pass 1 - find highest ram address
 	uint32_t highest = 0;
-	mmap_entry_t* mmap = (mmap_entry_t*)mb->mmap_addr;
-	while ((uint32_t)mmap < mb->mmap_addr + mb->mmap_length) {
-		if (mmap->type == 1 && mmap->addr_high == 0) {
-			uint32_t top = mmap->addr_low + mmap->len_low;
+	for (uint32_t i = 0; i < entry_count; i++) {
+		mb2_mmap_entry_t* e = (mb2_mmap_entry_t*)((uint8_t*)mmap_tag + sizeof(mb2_tag_mmap_t) + i * mmap_tag->entry_size);
+		if (e->type == 1 && (e->addr >> 32) == 0 && ((e->addr + e->len) >> 32) == 0) {
+			uint32_t top = (uint32_t)e->addr + (uint32_t)e->len;
 			if (top > highest) highest = top;
 		}
-		mmap = (mmap_entry_t*)((uint32_t)mmap + mmap->size + 4);
 	}
 
-	//calculate total pages
 	total_pages = highest / PAGE_SIZE;
-
-	//place bitmap right after kernel
 	bitmap = (uint32_t*)&kernel_end;
 	uint32_t bitmap_size = (total_pages / 32 + 1) * 4;
 
-	//mark everything used
 	for (uint32_t i = 0; i < total_pages / 32 + 1; i++) {
 		bitmap[i] = 0xFFFFFFFF;
 	}
 
 	//pass 2; mark usable areas as free
-	mmap = (mmap_entry_t*)mb->mmap_addr;
-	while ((uint32_t)mmap < mb->mmap_addr + mb->mmap_length) {
-		if (mmap->type == 1 && mmap->addr_high == 0) {
-			uint32_t start = mmap->addr_low / PAGE_SIZE;
-			uint32_t count = mmap->len_low / PAGE_SIZE;
-			for (uint32_t i = start; i < start + count && i < total_pages; i++) {
-				bitmap_clear(i);
+	for (uint32_t i = 0; i < entry_count; i++) {
+		mb2_mmap_entry_t* e = (mb2_mmap_entry_t*)((uint8_t*)mmap_tag + sizeof(mb2_tag_mmap_t) + i * mmap_tag->entry_size);
+		if (e->type == 1 && (e->addr >> 32) == 0 && ((e->addr + e->len) >> 32) == 0) {
+			uint32_t start = (uint32_t)e->addr / PAGE_SIZE;
+			uint32_t count = (uint32_t)e->len / PAGE_SIZE;
+			for (uint32_t j = start; j < start + count && j < total_pages; j++) {
+				bitmap_clear(j);
 				free_page_count++;
 			}
 		}
-		mmap = (mmap_entry_t*)((uint32_t)mmap + mmap->size + 4);
 	}
+	// ...rest (mark first 1MB used, mark kernel used) is unchanged
 
 	//mark first 1MB as used
 	for (uint32_t i = 0; i < 256; i++) {
