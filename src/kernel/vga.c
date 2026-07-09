@@ -133,23 +133,22 @@ void vga_print(const char* str) {
 // straight through from kernel_main's argument). Must have been requested
 // via the video-mode bits in the multiboot header (see entry.asm), and
 // GRUB must NOT be forced into gfxpayload=text (see grub.cfg).
-void vga_init(multiboot_info_t* mbi) {
-	if (mbi && (mbi->flags & MULTIBOOT_FLAG_FRAMEBUFFER) && mbi->framebuffer_addr) {
-		fb = (uint8_t*)(uint32_t)mbi->framebuffer_addr;
-		fb_pitch = mbi->framebuffer_pitch;
-		fb_width = mbi->framebuffer_width;
-		fb_height = mbi->framebuffer_height;
-		fb_bpp = mbi->framebuffer_bpp;
+void vga_init(uint32_t mb_info_addr) {
+	mb2_tag_framebuffer_t* fbt = (mb2_tag_framebuffer_t*)mb2_find_tag(mb_info_addr, MB2_TAG_FRAMEBUFFER);
+
+	if (fbt && fbt->framebuffer_addr) {
+		fb = (uint8_t*)(uint32_t)fbt->framebuffer_addr;
+		fb_pitch = fbt->framebuffer_pitch;
+		fb_width = fbt->framebuffer_width;
+		fb_height = fbt->framebuffer_height;
+		fb_bpp = fbt->framebuffer_bpp;
 	} else {
-		// No framebuffer info from GRUB - fall back to a known-safe
-		// default so we don't dereference garbage. This should not
-		// happen once entry.asm/grub.cfg are updated correctly, but
-		// it's a lot better than silently writing to nowhere.
 		fb = 0;
 		fb_pitch = 0;
 		fb_width = 0;
 		fb_height = 0;
 	}
+	// ...rest unchanged (cols/rows calc etc.)
 
 	cols = fb_width / FONT_W;
 	rows = fb_height / FONT_H;
