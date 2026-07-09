@@ -76,11 +76,11 @@ disk_driver_t disk_init(void) {
 		}
 	
 
-	if (ide_dev) {
-		vga_print("\ndisk: using legacy IDE driver");
-		active_driver = DISK_IDE;
-		return active_driver;
-	}
+//	if (ide_dev) {
+//		vga_print("\ndisk: using legacy IDE driver");
+//		active_driver = DISK_IDE;
+//		return active_driver;
+//	}
 
 	vga_print("\ndisk: WARNING - no supported storage controller found!");
 	active_driver = DISK_NONE;

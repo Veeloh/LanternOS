@@ -8,6 +8,7 @@
 #include "process.h"
 #include "fat32.h"
 #include "elf.h"
+#include "acpi.h"
 
 #define MAX_CMD_LEN 256
 #define MAX_ARGS 16
@@ -318,6 +319,12 @@ static void cmd_run(int argc, char** argv) {
 	}
 }
 
+static void cmd_poweroff(int argc, char** argv) {
+	(void)argc; (void)argv;
+	vga_print("\nShutting down...");
+	acpi_poweroff();
+}
+
 // command table - add a new command by adding one line here, no need to
 // touch shell_execute() itself.
 typedef void (*shell_cmd_fn)(int argc, char** argv);
@@ -341,6 +348,7 @@ static shell_command_t commands[] = {
 	{ "syscalltest", "tests syscalls (mostly for dev use)",           cmd_syscalltest },
 	{ "run",         "run <file> - loads and runs an ELF executable", cmd_run },
 	{ "shiggle",     0 /* easter egg, not shown in help */,           cmd_shiggle },
+	{ "poweroff",	 "shuts down the machine",						  cmd_poweroff},
 };
 
 #define NUM_COMMANDS (sizeof(commands) / sizeof(commands[0]))
