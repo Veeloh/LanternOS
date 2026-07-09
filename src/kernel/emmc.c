@@ -22,6 +22,7 @@
 #define SDHCI_ERROR_INT_STAT   0x32
 #define SDHCI_NORMAL_INT_STAT_EN  0x34
 #define SDHCI_ERROR_INT_STAT_EN   0x36
+#define SDHCI_CAPABILITIES        0x40
 
 #define PSTATE_CMD_INHIBIT     (1u << 0)
 #define PSTATE_DAT_INHIBIT     (1u << 1)
@@ -210,11 +211,11 @@ int emmc_init(pci_device_t* dev) {
 	w16(SDHCI_NORMAL_INT_STAT_EN, 0xFFFF); // unmask every normal status bit - we're polling, not using real IRQs
 	w16(SDHCI_ERROR_INT_STAT_EN, 0xFFFF);  // unmask error bits too, so bit15 (our INT_ERROR) actually latches on failure
 
-	// eMMC has no physical card-detect pin - force the controller to
-	// treat a card as always present, or SD_BUS_POWER below will
-	// silently refuse to latch (this is what was happening: power_ctrl
-	// read back 0x0E instead of 0x0F, and everything downstream timed
-	// out because the clock/commands never really went live).
+	// Sanity-check what the controller itself claims to support before
+	// we assume our hardcoded 3.3V/clock-divisor choices are sane for
+	// it. Bits 24-26 of the low dword are 1.8V/3.0V/3.3V support.
+	vga_print("\nemmc: capabilities="); print_hex32(r32(SDHCI_CAPABILITIES));
+
 	w8(SDHCI_HOST_CONTROL, r8(SDHCI_HOST_CONTROL) | HC_CARD_DETECT_SIGNAL_SEL | HC_CARD_DETECT_TEST_LEVEL);
 
 	// The card-detect override above makes CARD_INSERTED read 1
@@ -269,16 +270,33 @@ int emmc_init(pci_device_t* dev) {
 	}
 
 	w8(SDHCI_TIMEOUT_CONTROL, 0x0E); // max timeout value
-	spin(50000); // let SD clock actually reach the card before the first command
-	
+
+	// JEDEC eMMC spec requires the device get real settle time after
+	// power-up (>= 1ms, plus 74+ clock cycles) before it's guaranteed
+	// to answer anything. Our earlier spin(50000) was tuned for "clock
+	// physically reaches the card," not "the card's internal power-on
+	// self-test has finished" - those are different timescales.
+	spin(2000000);
+
 	if (!emmc_send_cmd(0, 0, 0, 0)) { vga_print("\nemmc: CMD0 (GO_IDLE) failed"); return 0; }
+	spin(500000); // let the card process GO_IDLE before hammering it with CMD1
 
 	// CMD1 (SEND_OP_COND) is MMC-specific (SD cards don't use it).
 	// Loop until the card clears its busy bit (OCR response bit 31).
+	// A hardware Command Timeout Error on an early attempt doesn't
+	// necessarily mean the card is dead - it can still be finishing
+	// its own internal init - so retry through timeouts here too,
+	// not just through valid-but-busy responses.
 	uint32_t ocr_arg = 0x40FF8080; // sector/high-capacity mode + full voltage window
 	int ready = 0;
+	int cmd1_hw_failures = 0;
 	for (int i = 0; i < 100; i++) {
-		if (!emmc_send_cmd(1, ocr_arg, 3, 0)) { vga_print("\nemmc: CMD1 failed"); return 0; }
+		if (!emmc_send_cmd(1, ocr_arg, 3, 0)) {
+			cmd1_hw_failures++;
+			if (cmd1_hw_failures > 20) { vga_print("\nemmc: CMD1 failed repeatedly, giving up"); return 0; }
+			spin(200000);
+			continue;
+		}
 		if (r32(SDHCI_RESPONSE0) & (1u << 31)) { ready = 1; break; }
 		spin(50000);
 	}
