@@ -18,6 +18,8 @@
 #define SDHCI_TIMEOUT_CONTROL  0x2E
 #define SDHCI_SOFTWARE_RESET   0x2F
 #define SDHCI_NORMAL_INT_STAT  0x30
+#define SDHCI_NORMAL_INT_STAT_EN  0x34
+#define SDHCI_ERROR_INT_STAT_EN   0x36
 
 #define PSTATE_CMD_INHIBIT     (1u << 0)
 #define PSTATE_DAT_INHIBIT     (1u << 1)
@@ -121,6 +123,8 @@ int emmc_init(pci_device_t* dev) {
 	if (!wait8_clear(SDHCI_SOFTWARE_RESET, SRESET_ALL, 1000000)) {
 		vga_print("\nemmc: reset never completed"); return 0;
 	}
+	w16(SDHCI_NORMAL_INT_STAT_EN, 0xFFFF); // unmask every normal status bit - we're polling, not using real IRQs
+w16(SDHCI_ERROR_INT_STAT_EN, 0xFFFF);  // unmask error bits too, so bit15 (our INT_ERROR) actually latches on failure
 
 w8(SDHCI_POWER_CONTROL, 0x0F);   // bus power on, 3.3V - do this FIRST
 	spin(100000);                     // let power rail settle
