@@ -16,3 +16,6 @@ int pci_scan(pci_device_t* out_devices, int max_devices);
 // class/subclass (e.g. 0x01/0x06 = SATA AHCI, 0x01/0x08 = NVMe).
 // Returns NULL if not found.
 pci_device_t* pci_find(pci_device_t* devices, int count, uint8_t class_code, uint8_t subclass);
+
+uint32_t pci_config_read32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
+void pci_config_write32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset, uint32_t value);
