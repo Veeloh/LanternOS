@@ -24,6 +24,8 @@
 
 #define PSTATE_CMD_INHIBIT     (1u << 0)
 #define PSTATE_DAT_INHIBIT     (1u << 1)
+#define PSTATE_CARD_INSERTED   (1u << 16)
+#define PSTATE_CARD_STABLE     (1u << 17)
 
 #define INT_CMD_COMPLETE       (1u << 0)
 #define INT_TRANSFER_COMPLETE  (1u << 1)
@@ -64,6 +66,10 @@ static int wait8_clear(uint32_t off, uint8_t mask, uint32_t timeout) {
 }
 static int wait32_clear(uint32_t off, uint32_t mask, uint32_t timeout) {
 	while (timeout--) if (!(r32(off) & mask)) return 1;
+	return 0;
+}
+static int wait32_set(uint32_t off, uint32_t mask, uint32_t timeout) {
+	while (timeout--) if (r32(off) & mask) return 1;
 	return 0;
 }
 
@@ -197,6 +203,16 @@ int emmc_init(pci_device_t* dev) {
 	// out because the clock/commands never really went live).
 	w8(SDHCI_HOST_CONTROL, r8(SDHCI_HOST_CONTROL) | HC_CARD_DETECT_SIGNAL_SEL | HC_CARD_DETECT_TEST_LEVEL);
 
+	// The card-detect override above makes CARD_INSERTED read 1
+	// immediately, but this controller still runs its debounce/settle
+	// state machine underneath - and it appears to gate both
+	// SD_BUS_POWER and SD_CLK_EN on CARD_STATE_STABLE, not just
+	// CARD_INSERTED. Wait for it properly instead of hoping a fixed
+	// spin() is long enough.
+	if (!wait32_set(SDHCI_PRESENT_STATE, PSTATE_CARD_STABLE, 2000000)) {
+		vga_print("\nemmc: card-detect never reached stable state");
+	}
+
 	w8(SDHCI_POWER_CONTROL, 0x0F);   // bus power on, 3.3V - do this FIRST
 	spin(100000);                     // let power rail settle
 
@@ -221,6 +237,22 @@ int emmc_init(pci_device_t* dev) {
 		vga_print("\nemmc: internal clock never stabilized"); return 0;
 	}
 	w16(SDHCI_CLOCK_CONTROL, r16(SDHCI_CLOCK_CONTROL) | CLOCK_SD_EN);
+
+	// Same story as CARD_STATE_STABLE above: on this chip a single
+	// write doesn't guarantee SD_CLK_EN latches immediately, so verify
+	// it actually stuck and retry a few times with a settle delay
+	// rather than racing straight into CMD0.
+	int clk_tries = 0;
+	while (!(r16(SDHCI_CLOCK_CONTROL) & CLOCK_SD_EN) && clk_tries < 20) {
+		spin(100000);
+		w16(SDHCI_CLOCK_CONTROL, r16(SDHCI_CLOCK_CONTROL) | CLOCK_SD_EN);
+		clk_tries++;
+	}
+	if (!(r16(SDHCI_CLOCK_CONTROL) & CLOCK_SD_EN)) {
+		vga_print("\nemmc: SD_CLK_EN never latched, clock_ctrl=");
+		print_hex16(r16(SDHCI_CLOCK_CONTROL));
+		return 0;
+	}
 
 	w8(SDHCI_TIMEOUT_CONTROL, 0x0E); // max timeout value
 	spin(50000); // let SD clock actually reach the card before the first command
