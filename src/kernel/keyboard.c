@@ -137,9 +137,59 @@ char keyboard_getchar() {
 	return c;
 }
 
+#define PS2_DATA 0x60
+#define PS2_STATUS 0x64
+#define PS2_CMD 0x64
+
+static void ps2_wait_write() {
+	int timeout = 100000;
+	while (timeout-- && (inb(PS2_STATUS) & 0x02));
+}
+
+static void ps2_wait_read() {
+	int timeout = 100000;
+	while (timeout-- && !(inb(PS2_STATUS) & 0x01));
+}
+
+void ps2_controller_init() {
+	//flush stale byte yo
+	while (inb(PS2_STATUS) & 0x01) {
+		inb(PS2_DATA);
+	}
+
+
+	//disable both ports
+	ps2_wait_write(); outb(PS2_CMD, 0xAD);
+	ps2_wait_write(); outb(PS2_CMD, 0xA7);
+
+	//flush again
+	while (inb(PS2_STATUS) & 0x01) {
+		inb(PS2_DATA);
+	}
+
+	ps2_wait_write(); outb(PS2_CMD, 0x20);
+	ps2_wait_read();
+	uint8_t config = inb(PS2_DATA);
+
+	config |= 0x01;
+	config &= ~0x10;
+
+	ps2_wait_write(); outb(PS2_CMD, 0x60);
+	ps2_wait_write(); outb(PS2_DATA, config);
+
+	//re enable port 1
+	ps2_wait_write(); outb(PS2_CMD, 0xAE);
+
+	ps2_wait_write(); outb(PS2_DATA, 0xF4);
+	
+
+}
+
+
 extern void keyboard_isr();
 
 void keyboard_init() {
+	ps2_controller_init();
 	last_char = 0;
 	idt_set_handler(33, (uint32_t)keyboard_isr);
 }

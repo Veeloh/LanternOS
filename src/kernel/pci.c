@@ -114,3 +114,15 @@ pci_device_t* pci_find(pci_device_t* devices, int count, uint8_t class_code, uin
 			return &devices[i];
 	return 0;
 }
+
+
+pci_device_t* pci_find_next(pci_device_t* devices, int count, uint8_t class_code, uint8_t subclass, int* search_idx) {
+	for (int i = *search_idx; i < count; i++) {
+		if (devices[i].class_code == class_code && devices[i].subclass == subclass) {
+			*search_idx = i + 1;
+			return &devices[i];
+		}
+	}
+	*search_idx = count;
+	return 0;
+}

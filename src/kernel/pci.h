@@ -19,3 +19,6 @@ pci_device_t* pci_find(pci_device_t* devices, int count, uint8_t class_code, uin
 
 uint32_t pci_config_read32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset);
 void pci_config_write32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset, uint32_t value);
+
+
+pci_device_t* pci_find_next(pci_device_t* devices, int count, uint8_t class_code, uint8_t subclass, int* search_idx);

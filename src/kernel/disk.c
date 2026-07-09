@@ -42,7 +42,7 @@ disk_driver_t disk_init(void) {
 	pci_device_t* ahci_dev = pci_find(pci_devices, count, 0x01, 0x06);
 	pci_device_t* nvme_dev = pci_find(pci_devices, count, 0x01, 0x08);
 	pci_device_t* ide_dev  = pci_find(pci_devices, count, 0x01, 0x01);
-	pci_device_t* emmc_dev = pci_find(pci_devices, count, 0x08, 0x05); // class 0x08 = base system peripheral, subclass 0x05 = SD host controller
+//	pci_device_t* emmc_dev = pci_find(pci_devices, count, 0x08, 0x05); // class 0x08 = base system peripheral, subclass 0x05 = SD host controller
 
 	if (ahci_dev) {
 		vga_print("\ndisk: AHCI controller found, initializing...");
@@ -64,23 +64,23 @@ disk_driver_t disk_init(void) {
 		vga_print("\ndisk: NVMe init failed, trying other options");
 	}
 
-	
-		if (emmc_dev) {
-			vga_print("\ndisk: eMMC/SDHCI controller found, initializing...");
-			if (emmc_init(emmc_dev)) {
-				vga_print("\ndisk: using eMMC driver");
-				active_driver = DISK_EMMC;
-				return active_driver;
-			}
-			vga_print("\ndisk: eMMC init failed, trying other options");
+	int emmc_idx = 0;
+	pci_device_t* emmc_dev;
+	while ((emmc_dev = pci_find_next(pci_devices, count, 0x08, 0x05, &emmc_idx))) {
+		vga_print("\ndisk: eMMC/SDHCI controller found, initializing...");
+		if (emmc_init(emmc_dev)) {
+			vga_print("\ndisk: using eMMC driver");
+			active_driver = DISK_EMMC;
+			return active_driver;
 		}
+		vga_print("\ndisk: No card on this eMMC controller, Trying next SD host controller...");
+	}
 	
-
-//	if (ide_dev) {
-//		vga_print("\ndisk: using legacy IDE driver");
-//		active_driver = DISK_IDE;
-//		return active_driver;
-//	}
+	if (ide_dev) {
+		vga_print("\ndisk: using legacy IDE driver");
+		active_driver = DISK_IDE;
+		return active_driver;
+	}
 
 	vga_print("\ndisk: WARNING - no supported storage controller found!");
 	active_driver = DISK_NONE;

@@ -37,8 +37,8 @@ void kernel_main(unsigned int multiboot_addr) {
 	heap_init();
 	fat32_init();
 	process_init();
-	//vga_clear();
-	// ...rest unchanged
+	vga_clear();
+	// inits over
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
 	vga_set_cursor(32, 12);
 	vga_print("Welcome to SolOS");
