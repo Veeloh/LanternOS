@@ -1,5 +1,6 @@
 #include "acpi.h"
 #include "vga.h"
+#include "multiboot.h"
 
 static void outb(uint16_t port, uint8_t val) { __asm__ volatile ("outb %0, %1" :: "a"(val), "Nd"(port)); }
 static uint16_t inw(uint16_t port) { uint16_t v; __asm__ volatile ("inw %1, %0" : "=a"(v) : "Nd"(port)); return v; }
@@ -74,10 +75,23 @@ static uint8_t checksum(const uint8_t* p, uint32_t len) {
 	return sum;
 }
 
-static rsdp_t* find_rsdp(void) {
-	// RSDP lives on a 16-byte boundary somewhere in the BIOS read-only
-	// area (0xE0000-0xFFFFF) on every machine that has one, or in the
-	// first 1KB of the EBDA - check both.
+// RSDP v1 and v2 both start with the same 20-byte layout our rsdp_t
+// covers (signature/checksum/oem_id/revision/rsdt_address) - v2 just
+// tacks on more fields after that (length, xsdt_address, ...) which we
+// don't need for a poweroff, so treating either as an rsdp_t* is fine.
+static rsdp_t* validated(void* candidate) {
+	if (!candidate) return 0;
+	if (!bytes_eq((uint8_t*)candidate, "RSD PTR ", 8)) return 0;
+	if (checksum((uint8_t*)candidate, 20) != 0) return 0;
+	return (rsdp_t*)candidate;
+}
+
+static rsdp_t* find_rsdp_legacy_scan(void) {
+	// Legacy-BIOS-only fallback: RSDP lives on a 16-byte boundary
+	// somewhere in the BIOS read-only area (0xE0000-0xFFFFF), or in the
+	// first 1KB of the EBDA - check both. SeaBIOS populates this region;
+	// UEFI firmware (e.g. OVMF) does not, so this only works when GRUB
+	// itself was booted via legacy BIOS.
 	uint16_t ebda_seg = *(volatile uint16_t*)0x40E;
 	uint32_t ebda_addr = (uint32_t)ebda_seg << 4;
 
@@ -89,15 +103,30 @@ static rsdp_t* find_rsdp(void) {
 	for (int r = 0; r < 2; r++) {
 		if (ranges[r][0] == 0) continue;
 		for (uint32_t addr = ranges[r][0]; addr < ranges[r][1]; addr += 16) {
-			rsdp_t* candidate = (rsdp_t*)addr;
-			if (bytes_eq((uint8_t*)candidate, "RSD PTR ", 8) &&
-			    checksum((uint8_t*)candidate, 20) == 0) {
-				return candidate;
-			}
+			rsdp_t* found = validated((void*)addr);
+			if (found) return found;
 		}
 	}
 	return 0;
 }
+
+static rsdp_t* find_rsdp(uint32_t mb_info_addr) {
+	// Preferred path: Multiboot2 hands us a verified copy of the RSDP it
+	// found, regardless of whether GRUB itself booted via legacy BIOS or
+	// UEFI. Try the ACPI 2.0+ tag first, then the ACPI 1.0 tag.
+	mb2_tag_rsdp_t* new_tag = (mb2_tag_rsdp_t*)mb2_find_tag(mb_info_addr, MB2_TAG_ACPI_NEW_RSDP);
+	rsdp_t* found = new_tag ? validated(new_tag->rsdp) : 0;
+	if (found) return found;
+
+	mb2_tag_rsdp_t* old_tag = (mb2_tag_rsdp_t*)mb2_find_tag(mb_info_addr, MB2_TAG_ACPI_OLD_RSDP);
+	found = old_tag ? validated(old_tag->rsdp) : 0;
+	if (found) return found;
+
+	// Fallback, in case we're ever run under a bootloader that doesn't
+	// supply the tag (e.g. testing without going through grub.cfg).
+	return find_rsdp_legacy_scan();
+}
+
 
 static fadt_t* find_fadt(rsdt_t* rsdt) {
 	int count = (rsdt->header.length - sizeof(sdt_header_t)) / 4;
@@ -163,11 +192,12 @@ static void print_hex8(uint8_t v) {
 	vga_print(buf);
 }
 
-int acpi_init(void) {
+int acpi_init(uint32_t mb_info_addr) {
 	ready = 0;
 
-	rsdp_t* rsdp = find_rsdp();
+	rsdp_t* rsdp = find_rsdp(mb_info_addr);
 	if (!rsdp) { vga_print("\nacpi: RSDP not found"); return 0; }
+	// ...rest of the function is unchanged
 
 	rsdt_t* rsdt = (rsdt_t*)rsdp->rsdt_address;
 	if (!bytes_eq((uint8_t*)rsdt->header.signature, "RSDT", 4) ||
