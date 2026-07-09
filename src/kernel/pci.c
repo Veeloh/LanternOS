@@ -13,11 +13,11 @@ static uint32_t inl(uint16_t port) {
 	return val;
 }
 
-static uint32_t pci_config_read32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset) {
+void pci_config_write32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset, uint32_t value) {
 	uint32_t address = (1u << 31) | ((uint32_t)bus << 16) | ((uint32_t)dev << 11)
 	                  | ((uint32_t)func << 8) | (offset & 0xFC);
 	outl(CONFIG_ADDRESS, address);
-	return inl(CONFIG_DATA);
+	outl(CONFIG_DATA, value);
 }
 
 static uint16_t pci_vendor_id(uint8_t bus, uint8_t dev, uint8_t func) {
