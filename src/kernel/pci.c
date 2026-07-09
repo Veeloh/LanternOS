@@ -105,5 +105,5 @@ pci_device_t* pci_find(pci_device_t* devices, int count, uint8_t class_code, uin
 	for (int i = 0; i < count; i++)
 		if (devices[i].class_code == class_code && devices[i].subclass == subclass)
 			return &devices[i];
-	return NULL;
+	return 0;
 }

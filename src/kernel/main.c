@@ -11,6 +11,7 @@
 #include "fat32.h"
 #include "syscall.h"
 #include "elf.h"
+#include "pci.h"
 
 void test_process() {
 	int i = 0;
@@ -28,6 +29,8 @@ void test_process() {
 void kernel_main(unsigned int multiboot_addr) {
 	vga_init((multiboot_info_t*)multiboot_addr);
 	pmm_init(multiboot_addr);
+	pci_device_t devices[64];
+	int dev_count = pci_scan(devices, 64);
 	pmm_reserve_region(ELF_USER_MIN_ADDR, ELF_USER_MAX_ADDR);
 	heap_init();
 	fat32_init();
