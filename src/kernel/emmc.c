@@ -106,6 +106,9 @@ int emmc_init(pci_device_t* dev) {
 		vga_print("\nemmc: reset never completed"); return 0;
 	}
 
+w8(SDHCI_POWER_CONTROL, 0x0F);   // bus power on, 3.3V - do this FIRST
+	spin(100000);                     // let power rail settle
+
 	// Identification-speed clock (~400kHz) - cards won't respond
 	// reliably above this until CMD1-CMD3 have negotiated further.
 	w16(SDHCI_CLOCK_CONTROL, 0);
@@ -116,9 +119,8 @@ int emmc_init(pci_device_t* dev) {
 	w16(SDHCI_CLOCK_CONTROL, r16(SDHCI_CLOCK_CONTROL) | CLOCK_SD_EN);
 
 	w8(SDHCI_TIMEOUT_CONTROL, 0x0E); // max timeout value
-	w8(SDHCI_POWER_CONTROL, 0x0F);   // bus power on, 3.3V
-	spin(100000); // let power/clock settle
-
+	spin(50000); // let SD clock actually reach the card before the first command
+	
 	if (!emmc_send_cmd(0, 0, 0, 0)) { vga_print("\nemmc: CMD0 (GO_IDLE) failed"); return 0; }
 
 	// CMD1 (SEND_OP_COND) is MMC-specific (SD cards don't use it).
