@@ -3,6 +3,7 @@
 #include "ahci.h"
 #include "nvme.h"
 #include "vga.h"
+	#include "emmc.h"
 
 #define SECTOR_SIZE 512
 #define ATA_DATA    0x1F0
@@ -41,6 +42,7 @@ disk_driver_t disk_init(void) {
 	pci_device_t* ahci_dev = pci_find(pci_devices, count, 0x01, 0x06);
 	pci_device_t* nvme_dev = pci_find(pci_devices, count, 0x01, 0x08);
 	pci_device_t* ide_dev  = pci_find(pci_devices, count, 0x01, 0x01);
+	pci_device_t* emmc_dev = pci_find(pci_devices, count, 0x08, 0x05); // class 0x08 = base system peripheral, subclass 0x05 = SD host controller
 
 	if (ahci_dev) {
 		vga_print("\ndisk: AHCI controller found, initializing...");
@@ -68,6 +70,21 @@ disk_driver_t disk_init(void) {
 		return active_driver;
 	}
 
+
+// ...
+	
+	// ...place this check wherever you want it in priority - your
+	// laptop will only ever have this one populated anyway...
+	if (emmc_dev) {
+		vga_print("\ndisk: eMMC/SDHCI controller found, initializing...");
+		if (emmc_init(emmc_dev)) {
+			vga_print("\ndisk: using eMMC driver");
+			active_driver = DISK_EMMC;
+			return active_driver;
+		}
+		vga_print("\ndisk: eMMC init failed, trying other options");
+	}
+
 	vga_print("\ndisk: WARNING - no supported storage controller found!");
 	active_driver = DISK_NONE;
 	return active_driver;
@@ -78,6 +95,7 @@ void disk_read_sector(uint32_t lba, uint8_t* buf) {
 		case DISK_AHCI: ahci_read_sector(lba, buf); return;
 		case DISK_NVME: nvme_read_sector(lba, buf); return;
 		case DISK_IDE:  ide_read_sector(lba, buf);  return;
+		case DISK_EMMC: emmc_read_sector(lba, buf); return;
 		default: return;
 	}
 }
