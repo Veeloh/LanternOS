@@ -1,5 +1,6 @@
 #include "fat32.h"
 #include "vga.h"
+#include "disk.h"
 
 #define SECTOR_SIZE 512
 #define ATA_DATA    0x1F0
@@ -55,13 +56,13 @@ static uint32_t fat_next_cluster(uint32_t cluster) {
     uint32_t fat_sector = fat_start + (fat_offset / SECTOR_SIZE);
     uint32_t offset = fat_offset % SECTOR_SIZE;
 
-    ata_read_sector(fat_sector, buf);
+    disk_read_sector(fat_sector, buf);
     return *(uint32_t*)(buf + offset) & 0x0FFFFFFF;
 }
 
 void fat32_init() {
     uint8_t buf[SECTOR_SIZE];
-    ata_read_sector(0, buf);
+    disk_read_sector(0, buf);
 
     // copy BPB
     for (int i = 0; i < sizeof(fat32_bpb_t); i++)
@@ -79,7 +80,7 @@ void fat32_list_dir() {
     while (cluster < 0x0FFFFFF8) {
         uint32_t lba = cluster_to_lba(cluster);
         for (uint32_t s = 0; s < bpb.sectors_per_cluster; s++) {
-            ata_read_sector(lba + s, buf);
+            disk_read_sector(lba + s, buf);
             fat32_entry_t* entry = (fat32_entry_t*)buf;
             for (int i = 0; i < SECTOR_SIZE / sizeof(fat32_entry_t); i++) {
                 if (entry[i].name[0] == 0) return;
@@ -108,7 +109,7 @@ int fat32_read_file(const char* name, uint8_t* buffer, uint32_t max_size) {
     while (cluster < 0x0FFFFFF8) {
         uint32_t lba = cluster_to_lba(cluster);
         for (uint32_t s = 0; s < bpb.sectors_per_cluster; s++) {
-            ata_read_sector(lba + s, buf);
+            disk_read_sector(lba + s, buf);
             fat32_entry_t* entry = (fat32_entry_t*)buf;
             for (int i = 0; i < SECTOR_SIZE / sizeof(fat32_entry_t); i++) {
                 if (entry[i].name[0] == 0) return -1;
@@ -131,7 +132,7 @@ int fat32_read_file(const char* name, uint8_t* buffer, uint32_t max_size) {
                     while (fc < 0x0FFFFFF8 && bytes_read < max_size) {
                         uint32_t flba = cluster_to_lba(fc);
                         for (uint32_t fs = 0; fs < bpb.sectors_per_cluster && bytes_read < max_size; fs++) {
-                            ata_read_sector(flba + fs, buf);
+                            disk_read_sector(flba + fs, buf);
                             uint32_t to_copy = SECTOR_SIZE;
                             if (bytes_read + to_copy > max_size) to_copy = max_size - bytes_read;
                             for (uint32_t b = 0; b < to_copy; b++)
