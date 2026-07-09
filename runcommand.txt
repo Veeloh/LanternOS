@@ -1,0 +1,1 @@
+qemu-system-x86_64 -bios /usr/share/qemu/OVMF.fd  -boot d -m 128M -vga std -drive file=build/solos.iso,media=cdrom,if=ide,index=1 -drive file=disk/disk.img,format=raw,media=disk,if=ide,index=0
