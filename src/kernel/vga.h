@@ -29,7 +29,7 @@ typedef enum {
 
 // Same public API as before - every existing caller (shell.c, elf.c,
 // syscall.c, clock.c, main.c...) needs ZERO changes.
-void vga_init(multiboot_info_t* mbi);   // <-- only signature that changed
+void vga_init(uint32_t mb_info_addr); // <-- only signature that changed
 void vga_clear(void);
 void vga_putchar(char c);
 void vga_print(const char* str);
@@ -37,3 +37,4 @@ void vga_set_colour(vga_colour fg, vga_colour bg);
 void vga_set_cursor(int x, int y);
 void vga_hide_cursor(void);
 void vga_get_cursor(int* x, int* y);
+
