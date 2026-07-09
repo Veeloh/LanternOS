@@ -23,6 +23,15 @@ static uint32_t fat_start;
 static uint32_t data_start;
 static uint32_t root_cluster;
 
+// The directory `ls`/`cat`/`cd` operate relative to. Starts at the root
+// and gets moved by fat32_change_dir(). cwd_path is the human-readable
+// form of the same thing, kept in sync purely for the prompt/pwd - it
+// has no bearing on how paths are actually resolved on disk.
+static uint32_t current_dir_cluster;
+static char cwd_path[128] = "/";
+
+#define FAT_ATTR_DIRECTORY 0x10
+
 // LBA of the start of the FAT32 volume itself (0 for an unpartitioned
 // raw FAT32 disk, or the ESP's starting LBA on a GPT-partitioned one).
 // Every read in this file goes through fat_read_sector() below so this
@@ -111,11 +120,12 @@ void fat32_init() {
     fat_start  = bpb.reserved_sectors;
     data_start = fat_start + (bpb.fat_count * bpb.sectors_per_fat_32);
     root_cluster = bpb.root_cluster;
+    current_dir_cluster = root_cluster;
 }
 
 void fat32_list_dir() {
     uint8_t buf[SECTOR_SIZE];
-    uint32_t cluster = root_cluster;
+    uint32_t cluster = current_dir_cluster;
     uint32_t hops = 0;
 
     while (cluster < 0x0FFFFFF8) {
@@ -149,7 +159,7 @@ void fat32_list_dir() {
 
 int fat32_read_file(const char* name, uint8_t* buffer, uint32_t max_size) {
     uint8_t buf[SECTOR_SIZE];
-    uint32_t cluster = root_cluster;
+    uint32_t cluster = current_dir_cluster;
     uint32_t hops = 0;
 
     while (cluster < 0x0FFFFFF8) {
@@ -202,4 +212,112 @@ int fat32_read_file(const char* name, uint8_t* buffer, uint32_t max_size) {
         cluster = fat_next_cluster(cluster);
     }
     return -1;
+}
+
+// Converts a typed name like "foo" or "foo.txt" into the raw 11-byte
+// space-padded 8.3 form FAT32 stores on disk. Same convention as the
+// inline matching fat32_read_file() does above.
+static void build_fat_name(const char* name, char* fname) {
+    for (int i = 0; i < 11; i++) fname[i] = ' ';
+    int ni = 0, fi = 0;
+    while (name[ni] && name[ni] != '.' && fi < 8) fname[fi++] = name[ni++];
+    if (name[ni] == '.') {
+        ni++;
+        fi = 8;
+        while (name[ni] && fi < 11) fname[fi++] = name[ni++];
+    }
+}
+
+// Scans dir_cluster for an entry matching the raw 8.3 fname. Returns 1
+// and fills out_cluster/out_attr on a hit, 0 if nothing matched.
+static int find_dir_entry(uint32_t dir_cluster, const char* fname, uint32_t* out_cluster, uint8_t* out_attr) {
+    uint8_t buf[SECTOR_SIZE];
+    uint32_t cluster = dir_cluster;
+    uint32_t hops = 0;
+
+    while (cluster < 0x0FFFFFF8) {
+        if (++hops > MAX_CLUSTER_CHAIN) return 0;
+        uint32_t lba = cluster_to_lba(cluster);
+        for (uint32_t s = 0; s < bpb.sectors_per_cluster; s++) {
+            fat_read_sector(lba + s, buf);
+            fat32_entry_t* entry = (fat32_entry_t*)buf;
+            for (int i = 0; i < SECTOR_SIZE / sizeof(fat32_entry_t); i++) {
+                if (entry[i].name[0] == 0) return 0;
+                if (entry[i].name[0] == 0xE5) continue;
+                if (entry[i].attributes & 0x0F) continue; // skip LFN
+
+                int match = 1;
+                for (int j = 0; j < 11; j++)
+                    if (entry[i].name[j] != fname[j]) { match = 0; break; }
+
+                if (match) {
+                    *out_cluster = ((uint32_t)entry[i].cluster_high << 16) | entry[i].cluster_low;
+                    *out_attr = entry[i].attributes;
+                    return 1;
+                }
+            }
+        }
+        cluster = fat_next_cluster(cluster);
+    }
+    return 0;
+}
+
+// Moves current_dir_cluster to `name`, which must be a single path
+// component ("foo", "..", "." or "/") - it does not parse "foo/bar" in
+// one call. Returns 0 on success, -1 if the name doesn't exist in the
+// current directory, -2 if it exists but isn't a directory.
+int fat32_change_dir(const char* name) {
+    if (!name || name[0] == 0) return -1;
+
+    // "cd /" or "cd \" - straight back to root regardless of depth
+    if ((name[0] == '/' || name[0] == '\\') && name[1] == 0) {
+        current_dir_cluster = root_cluster;
+        cwd_path[0] = '/';
+        cwd_path[1] = 0;
+        return 0;
+    }
+
+    if (name[0] == '.' && name[1] == 0) return 0; // "." - no-op
+
+    int is_parent = (name[0] == '.' && name[1] == '.' && name[2] == 0);
+
+    char fname[11];
+    build_fat_name(is_parent ? ".." : name, fname);
+
+    uint32_t target_cluster;
+    uint8_t attr;
+    if (!find_dir_entry(current_dir_cluster, fname, &target_cluster, &attr))
+        return -1; // not found
+
+    if (!(attr & FAT_ATTR_DIRECTORY))
+        return -2; // exists, but it's a file
+
+    // FAT32 stores a directory's own "." and ".." entries with cluster 0
+    // as a sentinel for "the root directory" rather than writing
+    // root_cluster's real value, so remap it here.
+    if (target_cluster == 0) target_cluster = root_cluster;
+
+    current_dir_cluster = target_cluster;
+
+    // keep the human-readable path in sync for the prompt/pwd
+    int len = 0;
+    while (cwd_path[len]) len++;
+
+    if (is_parent) {
+        while (len > 1 && cwd_path[len - 1] != '/') len--;
+        if (len > 1) len--; // drop the trailing slash too, unless at root
+        cwd_path[len] = 0;
+        if (cwd_path[0] == 0) { cwd_path[0] = '/'; cwd_path[1] = 0; }
+    } else {
+        if (len > 1) cwd_path[len++] = '/';
+        int ni = 0;
+        while (name[ni] && len < (int)sizeof(cwd_path) - 1) cwd_path[len++] = name[ni++];
+        cwd_path[len] = 0;
+    }
+
+    return 0;
+}
+
+const char* fat32_get_cwd() {
+    return cwd_path;
 }
