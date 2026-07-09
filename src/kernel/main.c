@@ -29,18 +29,16 @@ void test_process() {
 }
 
 void kernel_main(unsigned int multiboot_addr) {
-	vga_init((multiboot_info_t*)multiboot_addr);
+	vga_init(multiboot_addr);              // was: vga_init((multiboot_info_t*)multiboot_addr)
 	pmm_init(multiboot_addr);
 	disk_init();
-//	pci_device_t devices[64];
-//	int dev_count = pci_scan(devices, 64);
+	acpi_init(multiboot_addr);             // moved up here, was missing/called with no args
 	pmm_reserve_region(ELF_USER_MIN_ADDR, ELF_USER_MAX_ADDR);
 	heap_init();
 	fat32_init();
 	process_init();
-	acpi_init();
-//	process_spawn(test_process);
-//	vga_clear();
+	//vga_clear();
+	// ...rest unchanged
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
 	vga_set_cursor(32, 12);
 	vga_print("Welcome to SolOS");
