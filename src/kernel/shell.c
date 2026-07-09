@@ -81,6 +81,8 @@ static void history_add(const char* line) {
 }
 
 static void shell_prompt() {
+	vga_set_colour(VGA_BLUE, VGA_BLACK);
+	vga_print(fat32_get_cwd());
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 	vga_print("> ");
 }
@@ -325,6 +327,30 @@ static void cmd_poweroff(int argc, char** argv) {
 	acpi_poweroff();
 }
 
+
+static void cmd_cd(int argc, char** argv) {
+	if (argc < 2) {
+		vga_print("\nUsage: cd <dir>");
+		return;
+	}
+
+	int result = fat32_change_dir(argv[1]);
+	if (result == -1) {
+		vga_print("\nDirectory not found: ");
+		vga_print(argv[1]);
+	}
+	else if (result == -2) {
+		vga_print("\nNot a directory: ");
+		vga_print(argv[1]);
+	}
+}
+
+static void cmd_pwd(int argc, char** argv) {
+	(void)argc; (void)argv;
+	vga_print("\n");
+	vga_print(fat32_get_cwd());
+}
+
 // command table - add a new command by adding one line here, no need to
 // touch shell_execute() itself.
 typedef void (*shell_cmd_fn)(int argc, char** argv);
@@ -349,6 +375,8 @@ static shell_command_t commands[] = {
 	{ "run",         "run <file> - loads and runs an ELF executable", cmd_run },
 	{ "shiggle",     0 /* easter egg, not shown in help */,           cmd_shiggle },
 	{ "poweroff",	 "shuts down the machine",						  cmd_poweroff},
+	{ "cd",          "cd <dir> - change direcrory",                   cmd_cd },
+	{ "pwd",		 "prints the current directory",				  cmd_pwd},
 };
 
 #define NUM_COMMANDS (sizeof(commands) / sizeof(commands[0]))
