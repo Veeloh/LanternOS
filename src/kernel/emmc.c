@@ -57,6 +57,16 @@ static int wait32_clear(uint32_t off, uint32_t mask, uint32_t timeout) {
 
 static void spin(uint32_t n) { for (volatile uint32_t i = 0; i < n; i++); }
 
+
+static void print_hex16(uint16_t v) {
+	const char* hex = "0123456789ABCDEF";
+	char buf[5] = { hex[(v>>12)&0xF], hex[(v>>8)&0xF], hex[(v>>4)&0xF], hex[v&0xF], 0 };
+	vga_print(buf);
+}
+static void print_hex32(uint32_t v) {
+	print_hex16((v >> 16) & 0xFFFF);
+	print_hex16(v & 0xFFFF);
+}
 // Sends a command and waits for Command Complete. resp_type: 0=none,
 // 1=R2 (136-bit, used for CID), 2=R1/R1b/R3/R6 (48-bit). data=1 for
 // commands that also move a data block (sets Data Present + DMA bits).
@@ -83,8 +93,14 @@ static int emmc_send_cmd(uint8_t cmd_index, uint32_t arg, int resp_type, int dat
 	w16(SDHCI_COMMAND, cmd_reg);
 
 	if (!wait16_set(SDHCI_NORMAL_INT_STAT, INT_CMD_COMPLETE | INT_ERROR, 500000)) {
-		vga_print("\nemmc: command timed out"); return 0;
+		vga_print("\nemmc: cmd"); print_hex16(cmd_index); // cmd_index prints as hex but easy enough to read
+		vga_print(" timed out. present_state="); print_hex32(r32(SDHCI_PRESENT_STATE));
+		vga_print(" clock_ctrl=");   print_hex16(r16(SDHCI_CLOCK_CONTROL));
+		vga_print(" int_stat=");     print_hex16(r16(SDHCI_NORMAL_INT_STAT));
+		vga_print(" power_ctrl=");   print_hex16((uint16_t)r8(SDHCI_POWER_CONTROL));
+		return 0;
 	}
+
 	if (r16(SDHCI_NORMAL_INT_STAT) & INT_ERROR) {
 		vga_print("\nemmc: command error"); w16(SDHCI_NORMAL_INT_STAT, 0xFFFF); return 0;
 	}
