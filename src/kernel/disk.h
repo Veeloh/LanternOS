@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-typedef enum { DISK_NONE = 0, DISK_IDE, DISK_AHCI, DISK_NVME } disk_driver_t;
+typedef enum { DISK_NONE = 0, DISK_IDE, DISK_AHCI, DISK_NVME, DISK_EMMC } disk_driver_t;
 
 // Scans PCI, picks whichever storage controller is actually present
 // (AHCI > NVMe > legacy IDE), initializes it, returns which one won.
