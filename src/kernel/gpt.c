@@ -39,7 +39,7 @@ typedef struct {
 // order you'd get from just writing the GUID out left to right - this
 // is the actual on-disk byte sequence for that GUID.
 static const uint8_t ESP_TYPE_GUID[16] = {
-	0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0x11, 0xD2,
+	0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11,
 	0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B
 };
 
@@ -51,9 +51,6 @@ static int guid_eq(const uint8_t* a, const uint8_t* b) {
 int gpt_find_esp(uint32_t* out_lba) {
 	uint8_t buf[SECTOR_SIZE];
 
-	// LBA0 is the protective MBR (a single fake partition covering
-	// the whole disk, so old MBR-only tools don't clobber it) - the
-	// real header we care about is at LBA1.
 	disk_read_sector(1, buf);
 	gpt_header_t* hdr = (gpt_header_t*)buf;
 
