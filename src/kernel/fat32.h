@@ -50,3 +50,5 @@ typedef struct {
 void fat32_init();
 int fat32_read_file(const char* name, uint8_t* buffer, uint32_t max_size);
 void fat32_list_dir();
+int fat32_change_dir(const char* name);
+const char* fat32_get_cwd(void);
