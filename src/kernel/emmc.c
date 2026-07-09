@@ -19,6 +19,7 @@
 #define SDHCI_TIMEOUT_CONTROL  0x2E
 #define SDHCI_SOFTWARE_RESET   0x2F
 #define SDHCI_NORMAL_INT_STAT  0x30
+#define SDHCI_ERROR_INT_STAT   0x32
 #define SDHCI_NORMAL_INT_STAT_EN  0x34
 #define SDHCI_ERROR_INT_STAT_EN   0x36
 
@@ -133,15 +134,29 @@ static void print_hex32(uint32_t v) {
 	print_hex16((v >> 16) & 0xFFFF);
 	print_hex16(v & 0xFFFF);
 }
+
+// Same full register dump for every command failure path, not just
+// the CMD0-style timeout - present_state/clock_ctrl/power_ctrl tell us
+// about the bus itself, int_stat/err_stat tell us what the controller
+// actually saw happen on the wire.
+static void print_diag(uint8_t cmd_index, const char* label) {
+	vga_print("\nemmc: cmd"); print_hex16(cmd_index);
+	vga_print(" "); vga_print(label);
+	vga_print(" present_state="); print_hex32(r32(SDHCI_PRESENT_STATE));
+	vga_print(" clock_ctrl=");    print_hex16(r16(SDHCI_CLOCK_CONTROL));
+	vga_print(" int_stat=");      print_hex16(r16(SDHCI_NORMAL_INT_STAT));
+	vga_print(" err_stat=");      print_hex16(r16(SDHCI_ERROR_INT_STAT));
+	vga_print(" power_ctrl=");    print_hex16((uint16_t)r8(SDHCI_POWER_CONTROL));
+}
 // Sends a command and waits for Command Complete. resp_type: 0=none,
 // 1=R2 (136-bit, used for CID), 2=R1/R1b/R3/R6 (48-bit). data=1 for
 // commands that also move a data block (sets Data Present + DMA bits).
 static int emmc_send_cmd(uint8_t cmd_index, uint32_t arg, int resp_type, int data) {
 	if (!wait32_clear(SDHCI_PRESENT_STATE, PSTATE_CMD_INHIBIT, 500000)) {
-		vga_print("\nemmc: CMD_INHIBIT never cleared"); return 0;
+		print_diag(cmd_index, "CMD_INHIBIT never cleared."); return 0;
 	}
 	if (data && !wait32_clear(SDHCI_PRESENT_STATE, PSTATE_DAT_INHIBIT, 500000)) {
-		vga_print("\nemmc: DAT_INHIBIT never cleared"); return 0;
+		print_diag(cmd_index, "DAT_INHIBIT never cleared."); return 0;
 	}
 
 	w32(SDHCI_ARGUMENT, arg);
@@ -160,16 +175,15 @@ static int emmc_send_cmd(uint8_t cmd_index, uint32_t arg, int resp_type, int dat
 	w16(SDHCI_COMMAND, cmd_reg);
 
 	if (!wait16_set(SDHCI_NORMAL_INT_STAT, INT_CMD_COMPLETE | INT_ERROR, 500000)) {
-		vga_print("\nemmc: cmd"); print_hex16(cmd_index); // cmd_index prints as hex but easy enough to read
-		vga_print(" timed out. present_state="); print_hex32(r32(SDHCI_PRESENT_STATE));
-		vga_print(" clock_ctrl=");   print_hex16(r16(SDHCI_CLOCK_CONTROL));
-		vga_print(" int_stat=");     print_hex16(r16(SDHCI_NORMAL_INT_STAT));
-		vga_print(" power_ctrl=");   print_hex16((uint16_t)r8(SDHCI_POWER_CONTROL));
+		print_diag(cmd_index, "timed out.");
 		return 0;
 	}
 
 	if (r16(SDHCI_NORMAL_INT_STAT) & INT_ERROR) {
-		vga_print("\nemmc: command error"); w16(SDHCI_NORMAL_INT_STAT, 0xFFFF); return 0;
+		print_diag(cmd_index, "error.");
+		w16(SDHCI_ERROR_INT_STAT, 0xFFFF);
+		w16(SDHCI_NORMAL_INT_STAT, 0xFFFF);
+		return 0;
 	}
 	w16(SDHCI_NORMAL_INT_STAT, INT_CMD_COMPLETE);
 	return 1;
@@ -292,8 +306,9 @@ void emmc_read_sector(uint32_t lba, uint8_t* buf) {
 	if (!emmc_send_cmd(17 /* READ_SINGLE_BLOCK */, lba, 2, 1)) return;
 
 	if (!wait16_set(SDHCI_NORMAL_INT_STAT, INT_TRANSFER_COMPLETE | INT_ERROR, 1000000)) {
-		vga_print("\nemmc: read timed out"); return;
+		print_diag(17, "read timed out.");
+		return;
 	}
-	if (r16(SDHCI_NORMAL_INT_STAT) & INT_ERROR) vga_print("\nemmc: read error");
+	if (r16(SDHCI_NORMAL_INT_STAT) & INT_ERROR) print_diag(17, "read error.");
 	w16(SDHCI_NORMAL_INT_STAT, 0xFFFF);
 }
