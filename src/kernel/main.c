@@ -45,7 +45,7 @@ void kernel_main(unsigned int multiboot_addr) {
 	vga_set_cursor(32, 12);
 	vga_print("Welcome to SolOS");
 	vga_set_cursor(38, 13);
-	vga_print("v0.3");
+	vga_print("v0.4");
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 	vga_set_cursor(27, 15);
 	vga_print("Press any key to continue...");
