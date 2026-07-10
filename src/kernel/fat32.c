@@ -578,3 +578,169 @@ int fat32_write_file(const char* name, const uint8_t* data, uint32_t size) {
 
     return (int)written;
 }
+
+// True if dir_cluster's chain contains nothing but "." and ".." (and/or
+// already-deleted slots). Used by fat32_rmdir to refuse to remove a
+// directory that still has something in it.
+static int dir_is_empty(uint32_t dir_cluster) {
+    uint8_t buf[SECTOR_SIZE];
+    uint32_t cluster = dir_cluster;
+    uint32_t hops = 0;
+
+    while (cluster < 0x0FFFFFF8) {
+        // if we can't finish verifying it's empty, don't delete it
+        if (++hops > MAX_CLUSTER_CHAIN) return 0;
+        uint32_t lba = cluster_to_lba(cluster);
+        for (uint32_t s = 0; s < bpb.sectors_per_cluster; s++) {
+            fat_read_sector(lba + s, buf);
+            fat32_entry_t* entry = (fat32_entry_t*)buf;
+            for (int i = 0; i < SECTOR_SIZE / sizeof(fat32_entry_t); i++) {
+                if (entry[i].name[0] == 0) return 1; // end of entries - nothing real found
+                if (entry[i].name[0] == 0xE5) continue; // deleted slot
+                if (entry[i].attributes & 0x0F) continue; // LFN
+
+                int is_dot    = (entry[i].name[0] == '.' && entry[i].name[1] == ' ');
+                int is_dotdot = (entry[i].name[0] == '.' && entry[i].name[1] == '.' && entry[i].name[2] == ' ');
+                if (is_dot || is_dotdot) continue;
+
+                return 0; // found a real entry - not empty
+            }
+        }
+        cluster = fat_next_cluster(cluster);
+    }
+    return 1;
+}
+
+// Creates a subdirectory of the current directory: allocates it a
+// cluster, seeds that cluster with "." and ".." entries, and adds a
+// directory-type entry for it in the parent.
+//
+// Returns 0 on success, -1 if that name already exists, -2 if the disk
+// or the parent directory is full.
+int fat32_mkdir(const char* name) {
+    char fname[11];
+    build_fat_name(name, fname);
+
+    uint32_t existing_cluster;
+    uint8_t existing_attr;
+    if (find_dir_entry(current_dir_cluster, fname, &existing_cluster, &existing_attr))
+        return -1; // name taken (by a file or a directory, doesn't matter)
+
+    uint32_t new_cluster = allocate_cluster();
+    if (!new_cluster) return -2;
+
+    // seed the new directory's own cluster with "." and ".."
+    uint8_t buf[SECTOR_SIZE];
+    fat_read_sector(cluster_to_lba(new_cluster), buf);
+    fat32_entry_t* entries = (fat32_entry_t*)buf;
+
+    for (int i = 0; i < 11; i++) entries[0].name[i] = ' ';
+    entries[0].name[0] = '.';
+    entries[0].attributes = FAT_ATTR_DIRECTORY;
+    entries[0].cluster_high = (new_cluster >> 16) & 0xFFFF;
+    entries[0].cluster_low  = new_cluster & 0xFFFF;
+    entries[0].size = 0;
+
+    for (int i = 0; i < 11; i++) entries[1].name[i] = ' ';
+    entries[1].name[0] = '.';
+    entries[1].name[1] = '.';
+    entries[1].attributes = FAT_ATTR_DIRECTORY;
+    // FAT32 convention: ".." pointing at the root is stored as cluster 0,
+    // not root_cluster's real value (see fat32_change_dir's remap).
+    uint32_t parent_field = (current_dir_cluster == root_cluster) ? 0 : current_dir_cluster;
+    entries[1].cluster_high = (parent_field >> 16) & 0xFFFF;
+    entries[1].cluster_low  = parent_field & 0xFFFF;
+    entries[1].size = 0;
+
+    fat_write_sector(cluster_to_lba(new_cluster), buf);
+
+    // add the directory's own entry in the parent
+    uint32_t entry_lba, entry_index;
+    if (!find_free_dir_slot(current_dir_cluster, &entry_lba, &entry_index)) {
+        free_chain_from(new_cluster); // don't leak the cluster we just claimed
+        return -2;
+    }
+
+    uint8_t entry_buf[SECTOR_SIZE];
+    fat_read_sector(entry_lba, entry_buf);
+    fat32_entry_t* e = (fat32_entry_t*)entry_buf;
+    for (int i = 0; i < 11; i++) e[entry_index].name[i] = fname[i];
+    e[entry_index].attributes    = FAT_ATTR_DIRECTORY;
+    e[entry_index].reserved      = 0;
+    e[entry_index].created_tenths = 0;
+    e[entry_index].created_time  = 0;
+    e[entry_index].created_date  = 0;
+    e[entry_index].accessed_date = 0;
+    e[entry_index].modified_time = 0;
+    e[entry_index].modified_date = 0;
+    e[entry_index].cluster_high  = (new_cluster >> 16) & 0xFFFF;
+    e[entry_index].cluster_low   = new_cluster & 0xFFFF;
+    e[entry_index].size          = 0;
+    fat_write_sector(entry_lba, entry_buf);
+
+    return 0;
+}
+
+// Removes an empty subdirectory of the current directory.
+//
+// Returns 0 on success, -1 if the name doesn't exist, -2 if it exists
+// but isn't a directory (use fat32_remove_file for that), -3 if it's
+// not empty, -4 if it's the directory you're currently sitting in.
+int fat32_rmdir(const char* name) {
+    char fname[11];
+    build_fat_name(name, fname);
+
+    uint32_t entry_lba, entry_index;
+    if (!find_dir_entry_loc(current_dir_cluster, fname, &entry_lba, &entry_index))
+        return -1;
+
+    uint8_t entry_buf[SECTOR_SIZE];
+    fat_read_sector(entry_lba, entry_buf);
+    fat32_entry_t* e = (fat32_entry_t*)entry_buf;
+
+    if (!(e[entry_index].attributes & FAT_ATTR_DIRECTORY)) return -2;
+
+    uint32_t target_cluster = ((uint32_t)e[entry_index].cluster_high << 16) | e[entry_index].cluster_low;
+    if (target_cluster == 0) target_cluster = root_cluster;
+
+    if (target_cluster == current_dir_cluster) return -4;
+    if (!dir_is_empty(target_cluster)) return -3;
+
+    free_chain_from(target_cluster);
+
+    // re-read - free_chain_from only touched the FAT, not this sector
+    fat_read_sector(entry_lba, entry_buf);
+    e = (fat32_entry_t*)entry_buf;
+    e[entry_index].name[0] = 0xE5; // mark deleted
+    fat_write_sector(entry_lba, entry_buf);
+
+    return 0;
+}
+
+// Deletes a file (not a directory - use fat32_rmdir for those) in the
+// current directory. Returns 0 on success, -1 if not found, -2 if the
+// name refers to a directory.
+int fat32_remove_file(const char* name) {
+    char fname[11];
+    build_fat_name(name, fname);
+
+    uint32_t entry_lba, entry_index;
+    if (!find_dir_entry_loc(current_dir_cluster, fname, &entry_lba, &entry_index))
+        return -1;
+
+    uint8_t entry_buf[SECTOR_SIZE];
+    fat_read_sector(entry_lba, entry_buf);
+    fat32_entry_t* e = (fat32_entry_t*)entry_buf;
+
+    if (e[entry_index].attributes & FAT_ATTR_DIRECTORY) return -2;
+
+    uint32_t cluster = ((uint32_t)e[entry_index].cluster_high << 16) | e[entry_index].cluster_low;
+    if (cluster >= 2) free_chain_from(cluster);
+
+    fat_read_sector(entry_lba, entry_buf);
+    e = (fat32_entry_t*)entry_buf;
+    e[entry_index].name[0] = 0xE5;
+    fat_write_sector(entry_lba, entry_buf);
+
+    return 0;
+}

@@ -346,6 +346,52 @@ static void cmd_write(int argc, char** argv) {
 	}
 }
 
+static void cmd_mkdir(int argc, char** argv) {
+	if (argc < 2) {
+		vga_print("\nUsage: mkdir <dir>");
+		return;
+	}
+	int result = fat32_mkdir(argv[1]);
+	if (result == 0) {
+		vga_print("\nCreated directory ");
+		vga_print(argv[1]);
+	} else if (result == -1) {
+		vga_print("\nmkdir: ");
+		vga_print(argv[1]);
+		vga_print(" already exists");
+	} else {
+		vga_print("\nmkdir: directory full / disk full");
+	}
+}
+
+static void cmd_rmdir(int argc, char** argv) {
+	if (argc < 2) {
+		vga_print("\nUsage: rmdir <dir>");
+		return;
+	}
+	int result = fat32_rmdir(argv[1]);
+	switch (result) {
+		case 0:  vga_print("\nRemoved directory "); vga_print(argv[1]); break;
+		case -1: vga_print("\nrmdir: directory not found"); break;
+		case -2: vga_print("\nrmdir: not a directory (use rm)"); break;
+		case -3: vga_print("\nrmdir: directory not empty"); break;
+		case -4: vga_print("\nrmdir: can't remove the directory you're currently in"); break;
+	}
+}
+
+static void cmd_rm(int argc, char** argv) {
+	if (argc < 2) {
+		vga_print("\nUsage: rm <file>");
+		return;
+	}
+	int result = fat32_remove_file(argv[1]);
+	switch (result) {
+		case 0:  vga_print("\nRemoved "); vga_print(argv[1]); break;
+		case -1: vga_print("\nrm: file not found"); break;
+		case -2: vga_print("\nrm: that's a directory (use rmdir)"); break;
+	}
+}
+
 static void cmd_syscalltest(int argc, char** argv) {
 	(void)argc; (void)argv;
 	vga_print("\n Testing syscall...");
@@ -406,6 +452,9 @@ static shell_command_t commands[] = {
 	{ "cat",         "cat <file> - reads a file",                     cmd_cat },
 	{ "touch",       "touch <file> - creates an empty file",          cmd_touch },
 	{ "write",       "write <file> <text...> - writes text to a file", cmd_write },
+	{ "mkdir",       "mkdir <dir> - creates a directory",             cmd_mkdir },
+	{ "rmdir",       "rmdir <dir> - removes an empty directory",      cmd_rmdir },
+	{ "rm",          "rm <file> - deletes a file",                    cmd_rm },
 	{ "syscalltest", "tests syscalls (mostly for dev use)",           cmd_syscalltest },
 	{ "run",         "run <file> - loads and runs an ELF executable", cmd_run },
 	{ "shiggle",     0 /* easter egg, not shown in help */,           cmd_shiggle },

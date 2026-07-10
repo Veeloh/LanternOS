@@ -53,3 +53,6 @@ void fat32_list_dir();
 int fat32_change_dir(const char* name);
 const char* fat32_get_cwd(void);
 int fat32_write_file(const char* name, const uint8_t* data, uint32_t size);
+int fat32_mkdir(const char* name);
+int fat32_rmdir(const char* name);
+int fat32_remove_file(const char* name);
