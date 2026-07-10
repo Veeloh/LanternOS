@@ -81,8 +81,9 @@ static void history_add(const char* line) {
 }
 
 static void shell_prompt() {
-	vga_set_colour(VGA_WHITE, VGA_BLACK);
+	vga_set_colour(VGA_BLUE, VGA_BLACK);
 	vga_print(fat32_get_cwd());
+	vga_set_colour(VGA_WHITE, VGA_BLACK);
 	vga_print("> ");
 }
 
