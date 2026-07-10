@@ -81,8 +81,6 @@ static void history_add(const char* line) {
 }
 
 static void shell_prompt() {
-	vga_set_colour(VGA_BLUE, VGA_BLACK);
-	vga_print(fat32_get_cwd());
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 	vga_print("> ");
 }
@@ -289,6 +287,65 @@ static void cmd_cat(int argc, char** argv) {
 	kfree(buf);
 }
 
+static void cmd_touch(int argc, char** argv) {
+	if (argc < 2) {
+		vga_print("\nUsage: touch <file>");
+		return;
+	}
+
+	// Don't clobber an existing file's contents just because it already
+	// exists - real touch only updates the timestamp in that case (which
+	// we don't track yet), so the safest match for that behaviour here
+	// is to just leave the file alone. fat32_read_file with max_size 0
+	// is a cheap "does this exist" check: >= 0 means found, buffer/size
+	// of 0 means it never actually touches the (unused) buffer pointer.
+	if (fat32_read_file(argv[1], 0, 0) >= 0) {
+		vga_print("\n");
+		vga_print(argv[1]);
+		vga_print(" already exists");
+		return;
+	}
+
+	int written = fat32_write_file(argv[1], (const uint8_t*)"", 0);
+	if (written < 0) {
+		vga_print("\ntouch: ");
+		vga_print(written == -1 ? "that name is a directory" : "directory full / disk full");
+	} else {
+		vga_print("\nCreated ");
+		vga_print(argv[1]);
+	}
+}
+
+static void cmd_write(int argc, char** argv) {
+	if (argc < 3) {
+		vga_print("\nUsage: write <file> <text...>");
+		return;
+	}
+
+	// tokenize() replaced the spaces between argv[2..] with '\0's to
+	// split them apart - turn them back into spaces so "write f.txt
+	// hello world" writes "hello world" as one string, not just "hello".
+	char* start = argv[2];
+	char* end = argv[argc - 1];
+	while (*end) end++; // walk to the real end of the last word
+
+	for (char* p = start; p < end; p++)
+		if (*p == 0) *p = ' ';
+
+	uint32_t len = (uint32_t)(end - start);
+	int written = fat32_write_file(argv[1], (const uint8_t*)start, len);
+
+	if (written < 0) {
+		vga_print("\nwrite: ");
+		vga_print(written == -1 ? "that name is a directory" : "directory full / disk full");
+	} else {
+		vga_print("\nWrote ");
+		print_uint((uint32_t)written);
+		vga_print(" bytes to ");
+		vga_print(argv[1]);
+	}
+}
+
 static void cmd_syscalltest(int argc, char** argv) {
 	(void)argc; (void)argv;
 	vga_print("\n Testing syscall...");
@@ -327,30 +384,6 @@ static void cmd_poweroff(int argc, char** argv) {
 	acpi_poweroff();
 }
 
-
-static void cmd_cd(int argc, char** argv) {
-	if (argc < 2) {
-		vga_print("\nUsage: cd <dir>");
-		return;
-	}
-
-	int result = fat32_change_dir(argv[1]);
-	if (result == -1) {
-		vga_print("\nDirectory not found: ");
-		vga_print(argv[1]);
-	}
-	else if (result == -2) {
-		vga_print("\nNot a directory: ");
-		vga_print(argv[1]);
-	}
-}
-
-static void cmd_pwd(int argc, char** argv) {
-	(void)argc; (void)argv;
-	vga_print("\n");
-	vga_print(fat32_get_cwd());
-}
-
 // command table - add a new command by adding one line here, no need to
 // touch shell_execute() itself.
 typedef void (*shell_cmd_fn)(int argc, char** argv);
@@ -371,12 +404,12 @@ static shell_command_t commands[] = {
 	{ "ps",          "shows the process status",                      cmd_ps },
 	{ "ls",          "lists directory",                               cmd_ls },
 	{ "cat",         "cat <file> - reads a file",                     cmd_cat },
+	{ "touch",       "touch <file> - creates an empty file",          cmd_touch },
+	{ "write",       "write <file> <text...> - writes text to a file", cmd_write },
 	{ "syscalltest", "tests syscalls (mostly for dev use)",           cmd_syscalltest },
 	{ "run",         "run <file> - loads and runs an ELF executable", cmd_run },
 	{ "shiggle",     0 /* easter egg, not shown in help */,           cmd_shiggle },
 	{ "poweroff",	 "shuts down the machine",						  cmd_poweroff},
-	{ "cd",          "cd <dir> - change direcrory",                   cmd_cd },
-	{ "pwd",		 "prints the current directory",				  cmd_pwd},
 };
 
 #define NUM_COMMANDS (sizeof(commands) / sizeof(commands[0]))
