@@ -36,6 +36,8 @@ void kernel_main(unsigned int multiboot_addr) {
 	pmm_reserve_region(ELF_USER_MIN_ADDR, ELF_USER_MAX_ADDR);
 	heap_init();
 	fat32_init();
+
+
 	process_init();
 	vga_clear();
 	// inits over

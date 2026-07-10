@@ -152,7 +152,7 @@ static void print_diag(uint8_t cmd_index, const char* label) {
 // Sends a command and waits for Command Complete. resp_type: 0=none,
 // 1=R2 (136-bit, used for CID), 2=R1/R1b/R3/R6 (48-bit). data=1 for
 // commands that also move a data block (sets Data Present + DMA bits).
-static int emmc_send_cmd(uint8_t cmd_index, uint32_t arg, int resp_type, int data) {
+static int emmc_send_cmd(uint8_t cmd_index, uint32_t arg, int resp_type, int data, int is_write) {
 	if (!wait32_clear(SDHCI_PRESENT_STATE, PSTATE_CMD_INHIBIT, 500000)) {
 		print_diag(cmd_index, "CMD_INHIBIT never cleared."); return 0;
 	}
@@ -163,7 +163,10 @@ static int emmc_send_cmd(uint8_t cmd_index, uint32_t arg, int resp_type, int dat
 	w32(SDHCI_ARGUMENT, arg);
 
 	uint16_t xfer_mode = 0;
-	if (data) xfer_mode = (1 << 0) /* DMA enable */ | (1 << 1) /* block count enable */ | (1 << 4) /* read */;
+	if (data) {
+		xfer_mode = (1 << 0) /* DMA enable */ | (1 << 1) /* block count enable */;
+		if (!is_write) xfer_mode |= (1 << 4); // direction bit: 1 = card-to-host (read), 0 = write
+	}
 	w16(SDHCI_TRANSFER_MODE, xfer_mode);
 
 	uint16_t cmd_reg = (cmd_index << 8);
@@ -278,7 +281,7 @@ int emmc_init(pci_device_t* dev) {
 	// self-test has finished" - those are different timescales.
 	spin(2000000);
 
-	if (!emmc_send_cmd(0, 0, 0, 0)) { vga_print("\nemmc: CMD0 (GO_IDLE) failed"); return 0; }
+	if (!emmc_send_cmd(0, 0, 0, 0, 0)) { vga_print("\nemmc: CMD0 (GO_IDLE) failed"); return 0; }
 	spin(500000); // let the card process GO_IDLE before hammering it with CMD1
 
 	// CMD1 (SEND_OP_COND) is MMC-specific (SD cards don't use it).
@@ -291,7 +294,7 @@ int emmc_init(pci_device_t* dev) {
 	int ready = 0;
 	int cmd1_hw_failures = 0;
 	for (int i = 0; i < 100; i++) {
-		if (!emmc_send_cmd(1, ocr_arg, 3, 0)) {
+		if (!emmc_send_cmd(1, ocr_arg, 3, 0, 0)) {
 			cmd1_hw_failures++;
 			if (cmd1_hw_failures > 20) { vga_print("\nemmc: CMD1 failed repeatedly, giving up"); return 0; }
 			spin(200000);
@@ -302,11 +305,11 @@ int emmc_init(pci_device_t* dev) {
 	}
 	if (!ready) { vga_print("\nemmc: card never left busy state (CMD1)"); return 0; }
 
-	if (!emmc_send_cmd(2, 0, 1, 0)) { vga_print("\nemmc: CMD2 (ALL_SEND_CID) failed"); return 0; }
+	if (!emmc_send_cmd(2, 0, 1, 0, 0)) { vga_print("\nemmc: CMD2 (ALL_SEND_CID) failed"); return 0; }
 
 	rca = 1; // unlike SD, MMC cards don't pick their own RCA - the host assigns one
-	if (!emmc_send_cmd(3, rca << 16, 2, 0)) { vga_print("\nemmc: CMD3 (SET_RELATIVE_ADDR) failed"); return 0; }
-	if (!emmc_send_cmd(7, rca << 16, 2, 0)) { vga_print("\nemmc: CMD7 (SELECT_CARD) failed"); return 0; }
+	if (!emmc_send_cmd(3, rca << 16, 2, 0, 0)) { vga_print("\nemmc: CMD3 (SET_RELATIVE_ADDR) failed"); return 0; }
+	if (!emmc_send_cmd(7, rca << 16, 2, 0, 0)) { vga_print("\nemmc: CMD7 (SELECT_CARD) failed"); return 0; }
 
 	vga_print("\nemmc: card selected, ready for block reads (default speed only)");
 	return 1;
@@ -321,12 +324,29 @@ void emmc_read_sector(uint32_t lba, uint8_t* buf) {
 
 	// eMMC is block-addressed (byte addressing only applies to very
 	// old <2GB standard-capacity cards - not handled here).
-	if (!emmc_send_cmd(17 /* READ_SINGLE_BLOCK */, lba, 2, 1)) return;
+	if (!emmc_send_cmd(17 /* READ_SINGLE_BLOCK */, lba, 2, 1, 0)) return;
 
 	if (!wait16_set(SDHCI_NORMAL_INT_STAT, INT_TRANSFER_COMPLETE | INT_ERROR, 1000000)) {
 		print_diag(17, "read timed out.");
 		return;
 	}
 	if (r16(SDHCI_NORMAL_INT_STAT) & INT_ERROR) print_diag(17, "read error.");
+	w16(SDHCI_NORMAL_INT_STAT, 0xFFFF);
+}
+
+void emmc_write_sector(uint32_t lba, uint8_t* buf) {
+	if (!base) return;
+
+	w32(SDMA_SYSTEM_ADDRESS, (uint32_t)buf);
+	w16(SDHCI_BLOCK_SIZE, 512);
+	w16(SDHCI_BLOCK_COUNT, 1);
+
+	if (!emmc_send_cmd(24 /* WRITE_BLOCK */, lba, 2, 1, 1)) return;
+
+	if (!wait16_set(SDHCI_NORMAL_INT_STAT, INT_TRANSFER_COMPLETE | INT_ERROR, 1000000)) {
+		print_diag(24, "write timed out.");
+		return;
+	}
+	if (r16(SDHCI_NORMAL_INT_STAT) & INT_ERROR) print_diag(24, "write error.");
 	w16(SDHCI_NORMAL_INT_STAT, 0xFFFF);
 }

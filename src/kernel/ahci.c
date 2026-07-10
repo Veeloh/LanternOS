@@ -164,3 +164,44 @@ void ahci_read_sector(uint32_t lba, uint8_t* buf) {
 		if (p->is & (1 << 30)) { vga_print("\nahci: task file error"); return; }
 	}
 }
+
+void ahci_write_sector(uint32_t lba, uint8_t* buf) {
+	if (!hba || active_port < 0) return;
+	hba_port_t* p = &hba->ports[active_port];
+
+	while (p->tfd & 0x88); // wait BSY/DRQ clear
+
+	cmd_header_t* hdr = &cmd_list[0];
+	hdr->flags = 5;       // FIS length in dwords (5) for a Register H2D FIS
+	hdr->flags |= (1 << 6); // W - this is a write, host->device data flow
+	hdr->prdtl = 1;
+	hdr->prdbc = 0;
+	hdr->ctba  = (uint32_t)&cmd_table;
+	hdr->ctbau = 0;
+
+	for (int i = 0; i < (int)sizeof(cmd_table_t); i++) ((uint8_t*)&cmd_table)[i] = 0;
+
+	cmd_table.prdt[0].dba  = (uint32_t)buf;
+	cmd_table.prdt[0].dbau = 0;
+	cmd_table.prdt[0].dbc_rsv1 = (SECTOR_SIZE - 1) | (1u << 31); // byte count -1, IOC bit
+
+	fis_reg_h2d_t* fis = (fis_reg_h2d_t*)cmd_table.cfis;
+	fis->fis_type = 0x27; // Register H2D
+	fis->pmport_c = 0x80; // "command" bit set
+	fis->command  = 0x35; // WRITE DMA EXT
+	fis->device   = 1 << 6; // LBA mode
+	fis->lba0 = lba & 0xFF;
+	fis->lba1 = (lba >> 8) & 0xFF;
+	fis->lba2 = (lba >> 16) & 0xFF;
+	fis->lba3 = (lba >> 24) & 0xFF;
+	fis->lba4 = 0;
+	fis->lba5 = 0;
+	fis->countl = 1; // 1 sector
+	fis->counth = 0;
+
+	p->ci |= 1; // issue command slot 0
+
+	while (p->ci & 1) {
+		if (p->is & (1 << 30)) { vga_print("\nahci: task file error (write)"); return; }
+	}
+}

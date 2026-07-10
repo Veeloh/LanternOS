@@ -20,6 +20,9 @@ static uint8_t inb(uint16_t port) { uint8_t v; __asm__ volatile ("inb %1, %0" : 
 static void inw_buffer(uint16_t port, uint16_t* buf, uint32_t count) {
 	__asm__ volatile ("rep insw" : "+D"(buf), "+c"(count) : "d"(port) : "memory");
 }
+static void outw_buffer(uint16_t port, const uint16_t* buf, uint32_t count) {
+	__asm__ volatile ("rep outsw" : "+S"(buf), "+c"(count) : "d"(port) : "memory");
+}
 
 static void ide_read_sector(uint32_t lba, uint8_t* buf) {
 	while (inb(ATA_STATUS) & 0x80);
@@ -31,6 +34,21 @@ static void ide_read_sector(uint32_t lba, uint8_t* buf) {
 	outb(ATA_CMD,    0x20);
 	while (!(inb(ATA_STATUS) & 0x08));
 	inw_buffer(ATA_DATA, (uint16_t*)buf, SECTOR_SIZE / 2);
+}
+
+static void ide_write_sector(uint32_t lba, uint8_t* buf) {
+	while (inb(ATA_STATUS) & 0x80); // wait BSY clear
+	outb(ATA_HEAD, 0xE0 | (ATA_USE_SLAVE << 4) | ((lba >> 24) & 0x0F));
+	outb(0x1F2, 1);
+	outb(ATA_SECTOR, lba & 0xFF);
+	outb(ATA_LCYL,   (lba >> 8) & 0xFF);
+	outb(ATA_HCYL,   (lba >> 16) & 0xFF);
+	outb(ATA_CMD,    0x30); // WRITE SECTORS
+	while (!(inb(ATA_STATUS) & 0x08)); // wait DRQ before pushing data
+	outw_buffer(ATA_DATA, (uint16_t*)buf, SECTOR_SIZE / 2);
+	while (inb(ATA_STATUS) & 0x80); // wait BSY clear again - write is done once this drops
+	outb(ATA_CMD, 0xE7); // CACHE FLUSH - make sure it actually lands on disk
+	while (inb(ATA_STATUS) & 0x80);
 }
 
 static disk_driver_t active_driver = DISK_NONE;
@@ -93,6 +111,16 @@ void disk_read_sector(uint32_t lba, uint8_t* buf) {
 		case DISK_NVME: nvme_read_sector(lba, buf); return;
 		case DISK_IDE:  ide_read_sector(lba, buf);  return;
 		case DISK_EMMC: emmc_read_sector(lba, buf); return;
+		default: return;
+	}
+}
+
+void disk_write_sector(uint32_t lba, uint8_t* buf) {
+	switch (active_driver) {
+		case DISK_AHCI: ahci_write_sector(lba, buf); return;
+		case DISK_NVME: nvme_write_sector(lba, buf); return;
+		case DISK_IDE:  ide_write_sector(lba, buf);  return;
+		case DISK_EMMC: emmc_write_sector(lba, buf); return;
 		default: return;
 	}
 }

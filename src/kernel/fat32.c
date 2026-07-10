@@ -42,6 +42,10 @@ static void fat_read_sector(uint32_t lba, uint8_t* buf) {
 	disk_read_sector(partition_base + lba, buf);
 }
 
+static void fat_write_sector(uint32_t lba, uint8_t* buf) {
+	disk_write_sector(partition_base + lba, buf);
+}
+
 static void outb(uint16_t port, uint8_t val) {
     __asm__ volatile ("outb %0, %1" :: "a"(val), "Nd"(port));
 }
@@ -84,6 +88,86 @@ static uint32_t fat_next_cluster(uint32_t cluster) {
 
     fat_read_sector(fat_sector, buf);
     return *(uint32_t*)(buf + offset) & 0x0FFFFFFF;
+}
+
+// Writes a single FAT entry, to every FAT copy on disk (bpb.fat_count is
+// normally 2 - mismatched copies are exactly how "chkdsk fixed errors"
+// horror stories start, so keep them in lockstep). The top 4 bits of
+// each 32-bit entry are reserved by the spec and must be preserved.
+static void fat_set_cluster(uint32_t cluster, uint32_t value) {
+    uint8_t buf[SECTOR_SIZE];
+    uint32_t fat_offset = cluster * 4;
+    uint32_t sector_in_fat = fat_offset / SECTOR_SIZE;
+    uint32_t offset = fat_offset % SECTOR_SIZE;
+
+    for (uint32_t copy = 0; copy < bpb.fat_count; copy++) {
+        uint32_t fat_sector = fat_start + copy * bpb.sectors_per_fat_32 + sector_in_fat;
+        fat_read_sector(fat_sector, buf);
+        uint32_t* entry = (uint32_t*)(buf + offset);
+        *entry = (*entry & 0xF0000000) | (value & 0x0FFFFFFF);
+        fat_write_sector(fat_sector, buf);
+    }
+}
+
+// Linear scan of the FAT for the first entry reading as 0 (free).
+// Fine for a hobby OS; a real one would cache a "search hint" (FSInfo's
+// next-free field) instead of re-scanning from cluster 2 every time.
+static uint32_t find_free_cluster(void) {
+    uint8_t buf[SECTOR_SIZE];
+    uint32_t total_clusters = (bpb.total_sectors_32 - data_start) / bpb.sectors_per_cluster;
+
+    for (uint32_t sector = 0; sector < bpb.sectors_per_fat_32; sector++) {
+        fat_read_sector(fat_start + sector, buf);
+        uint32_t* entries = (uint32_t*)buf;
+        for (uint32_t i = 0; i < SECTOR_SIZE / 4; i++) {
+            uint32_t cluster = sector * (SECTOR_SIZE / 4) + i;
+            if (cluster < 2) continue;             // 0 and 1 are reserved, not real clusters
+            if (cluster >= total_clusters + 2) return 0; // ran off the end of the volume
+            if ((entries[i] & 0x0FFFFFFF) == 0) return cluster;
+        }
+    }
+    return 0; // disk full
+}
+
+// Claims a free cluster (marks it end-of-chain so nothing else can grab
+// it) and zeroes its data on disk, so a freshly-allocated directory
+// cluster doesn't start out full of garbage that looks like entries.
+static uint32_t allocate_cluster(void) {
+    uint32_t cluster = find_free_cluster();
+    if (!cluster) return 0;
+
+    fat_set_cluster(cluster, 0x0FFFFFFF);
+
+    uint8_t zero[SECTOR_SIZE] = {0};
+    uint32_t lba = cluster_to_lba(cluster);
+    for (uint32_t s = 0; s < bpb.sectors_per_cluster; s++)
+        fat_write_sector(lba + s, zero);
+
+    return cluster;
+}
+
+// Frees every cluster in a chain starting at `cluster` (used when
+// truncating a file, or deleting one). Does NOT touch whatever pointed
+// to `cluster` in the first place - the caller is responsible for
+// terminating/updating that pointer separately.
+static void free_chain_from(uint32_t cluster) {
+    uint32_t hops = 0;
+    while (cluster >= 2 && cluster < 0x0FFFFFF8) {
+        if (++hops > MAX_CLUSTER_CHAIN) return;
+        uint32_t next = fat_next_cluster(cluster);
+        fat_set_cluster(cluster, 0);
+        cluster = next;
+    }
+}
+
+// Allocates a fresh cluster and links it onto the end of an existing
+// chain (used both for growing a file and for growing a directory that's
+// run out of entry slots). Returns 0 on disk-full, same as allocate_cluster.
+static uint32_t extend_chain(uint32_t last_cluster) {
+    uint32_t new_cluster = allocate_cluster();
+    if (!new_cluster) return 0;
+    fat_set_cluster(last_cluster, new_cluster);
+    return new_cluster;
 }
 
 void fat32_init() {
@@ -262,6 +346,80 @@ static int find_dir_entry(uint32_t dir_cluster, const char* fname, uint32_t* out
     return 0;
 }
 
+// Same scan as find_dir_entry, but returns *where* the entry lives (its
+// sector's LBA and index within that sector) instead of decoding it, so
+// a caller can read that sector, edit the entry in place, and write the
+// sector straight back.
+static int find_dir_entry_loc(uint32_t dir_cluster, const char* fname, uint32_t* out_lba, uint32_t* out_index) {
+    uint8_t buf[SECTOR_SIZE];
+    uint32_t cluster = dir_cluster;
+    uint32_t hops = 0;
+
+    while (cluster < 0x0FFFFFF8) {
+        if (++hops > MAX_CLUSTER_CHAIN) return 0;
+        uint32_t lba = cluster_to_lba(cluster);
+        for (uint32_t s = 0; s < bpb.sectors_per_cluster; s++) {
+            fat_read_sector(lba + s, buf);
+            fat32_entry_t* entry = (fat32_entry_t*)buf;
+            for (int i = 0; i < SECTOR_SIZE / sizeof(fat32_entry_t); i++) {
+                if (entry[i].name[0] == 0) return 0;
+                if (entry[i].name[0] == 0xE5) continue;
+                if (entry[i].attributes & 0x0F) continue;
+
+                int match = 1;
+                for (int j = 0; j < 11; j++)
+                    if (entry[i].name[j] != fname[j]) { match = 0; break; }
+
+                if (match) {
+                    *out_lba = lba + s;
+                    *out_index = i;
+                    return 1;
+                }
+            }
+        }
+        cluster = fat_next_cluster(cluster);
+    }
+    return 0;
+}
+
+// Finds a directory-entry slot free for the taking - either an unused
+// tail slot (name[0] == 0) or a deleted one (name[0] == 0xE5). If the
+// directory's whole cluster chain is packed full, extends it with one
+// more (already-zeroed) cluster and hands back the first slot in that.
+static int find_free_dir_slot(uint32_t dir_cluster, uint32_t* out_lba, uint32_t* out_index) {
+    uint8_t buf[SECTOR_SIZE];
+    uint32_t cluster = dir_cluster;
+    uint32_t hops = 0;
+    uint32_t last_cluster = dir_cluster;
+
+    while (cluster < 0x0FFFFFF8) {
+        if (++hops > MAX_CLUSTER_CHAIN) return 0;
+        last_cluster = cluster;
+        uint32_t lba = cluster_to_lba(cluster);
+        for (uint32_t s = 0; s < bpb.sectors_per_cluster; s++) {
+            fat_read_sector(lba + s, buf);
+            fat32_entry_t* entry = (fat32_entry_t*)buf;
+            for (int i = 0; i < SECTOR_SIZE / sizeof(fat32_entry_t); i++) {
+                if (entry[i].name[0] == 0 || entry[i].name[0] == 0xE5) {
+                    *out_lba = lba + s;
+                    *out_index = i;
+                    return 1;
+                }
+            }
+        }
+        uint32_t next = fat_next_cluster(cluster);
+        if (next >= 0x0FFFFFF8) {
+            uint32_t new_cluster = extend_chain(last_cluster);
+            if (!new_cluster) return 0; // disk full
+            *out_lba = cluster_to_lba(new_cluster);
+            *out_index = 0;
+            return 1;
+        }
+        cluster = next;
+    }
+    return 0;
+}
+
 // Moves current_dir_cluster to `name`, which must be a single path
 // component ("foo", "..", "." or "/") - it does not parse "foo/bar" in
 // one call. Returns 0 on success, -1 if the name doesn't exist in the
@@ -320,4 +478,103 @@ int fat32_change_dir(const char* name) {
 
 const char* fat32_get_cwd() {
     return cwd_path;
+}
+
+// Writes `size` bytes of `data` to a file named `name` in the current
+// directory - creating it if it doesn't exist, overwriting it in place
+// (and freeing any now-unused trailing clusters) if it does.
+//
+// Returns bytes actually written on success, -1 if `name` exists but is
+// a directory, -2 if no directory slot was available and the directory
+// couldn't be extended (disk full), or a value less than `size` if the
+// disk ran out of space partway through (a short write, not an error -
+// check the return value against `size` if that distinction matters).
+int fat32_write_file(const char* name, const uint8_t* data, uint32_t size) {
+    char fname[11];
+    build_fat_name(name, fname);
+
+    uint32_t entry_lba, entry_index;
+    uint8_t entry_buf[SECTOR_SIZE];
+
+    int existed = find_dir_entry_loc(current_dir_cluster, fname, &entry_lba, &entry_index);
+
+    if (existed) {
+        fat_read_sector(entry_lba, entry_buf);
+        fat32_entry_t* e = (fat32_entry_t*)entry_buf;
+        if (e[entry_index].attributes & FAT_ATTR_DIRECTORY) return -1;
+    } else {
+        if (!find_free_dir_slot(current_dir_cluster, &entry_lba, &entry_index)) return -2;
+
+        fat_read_sector(entry_lba, entry_buf);
+        fat32_entry_t* e = (fat32_entry_t*)entry_buf;
+        for (int i = 0; i < 11; i++) e[entry_index].name[i] = fname[i];
+        e[entry_index].attributes    = 0x20; // ARCHIVE
+        e[entry_index].reserved      = 0;
+        e[entry_index].created_tenths = 0;
+        e[entry_index].created_time  = 0;
+        e[entry_index].created_date  = 0;
+        e[entry_index].accessed_date = 0;
+        e[entry_index].modified_time = 0;
+        e[entry_index].modified_date = 0;
+        e[entry_index].cluster_high  = 0;
+        e[entry_index].cluster_low   = 0;
+        e[entry_index].size          = 0;
+        fat_write_sector(entry_lba, entry_buf);
+    }
+
+    fat_read_sector(entry_lba, entry_buf);
+    fat32_entry_t* e = (fat32_entry_t*)entry_buf;
+    uint32_t first_cluster = ((uint32_t)e[entry_index].cluster_high << 16) | e[entry_index].cluster_low;
+
+    uint32_t bytes_per_cluster = bpb.sectors_per_cluster * SECTOR_SIZE;
+    uint32_t clusters_needed = (size == 0) ? 0 : (size + bytes_per_cluster - 1) / bytes_per_cluster;
+
+    uint32_t cluster = first_cluster;
+    uint32_t prev_cluster = 0;
+    uint32_t written = 0;
+    uint32_t clusters_used = 0;
+
+    if (clusters_needed == 0) {
+        if (first_cluster >= 2) free_chain_from(first_cluster);
+        first_cluster = 0;
+    } else {
+        while (clusters_used < clusters_needed) {
+            if (cluster < 2 || cluster >= 0x0FFFFFF8) {
+                uint32_t new_cluster = allocate_cluster();
+                if (!new_cluster) break; // disk full mid-write - short write
+                if (prev_cluster) fat_set_cluster(prev_cluster, new_cluster);
+                else first_cluster = new_cluster;
+                cluster = new_cluster;
+            }
+
+            uint8_t buf[SECTOR_SIZE];
+            uint32_t lba = cluster_to_lba(cluster);
+            for (uint32_t s = 0; s < bpb.sectors_per_cluster && written < size; s++) {
+                uint32_t to_copy = SECTOR_SIZE;
+                if (written + to_copy > size) to_copy = size - written;
+                for (uint32_t b = 0; b < to_copy; b++) buf[b] = data[written + b];
+                for (uint32_t b = to_copy; b < SECTOR_SIZE; b++) buf[b] = 0; // pad final partial sector
+                fat_write_sector(lba + s, buf);
+                written += to_copy;
+            }
+
+            prev_cluster = cluster;
+            clusters_used++;
+            cluster = fat_next_cluster(cluster);
+        }
+
+        // if the file used to be longer, whatever's left of its old chain
+        // past the point we actually needed gets freed
+        if (prev_cluster) fat_set_cluster(prev_cluster, 0x0FFFFFFF);
+        if (cluster >= 2 && cluster < 0x0FFFFFF8) free_chain_from(cluster);
+    }
+
+    fat_read_sector(entry_lba, entry_buf);
+    e = (fat32_entry_t*)entry_buf;
+    e[entry_index].cluster_high = (first_cluster >> 16) & 0xFFFF;
+    e[entry_index].cluster_low  = first_cluster & 0xFFFF;
+    e[entry_index].size = written;
+    fat_write_sector(entry_lba, entry_buf);
+
+    return (int)written;
 }

@@ -10,3 +10,8 @@ disk_driver_t disk_init(void);
 // Reads one 512-byte sector, dispatching to whichever driver disk_init()
 // picked. fat32.c should call this instead of touching hardware directly.
 void disk_read_sector(uint32_t lba, uint8_t* buf);
+
+// Writes one 512-byte sector, dispatching the same way. Caller is
+// responsible for read-modify-write if it only wants to change part of
+// a sector - this always writes the full 512 bytes from buf.
+void disk_write_sector(uint32_t lba, uint8_t* buf);

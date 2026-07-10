@@ -111,3 +111,24 @@ void nvme_read_sector(uint32_t lba, uint8_t* buf) {
 	if (io_cq_head == 0) io_cq_phase ^= 1;
 	*doorbell(1, 1) = io_cq_head;
 }
+
+void nvme_write_sector(uint32_t lba, uint8_t* buf) {
+	if (!regs) return;
+
+	nvme_cmd_t cmd = {0};
+	cmd.cdw0 = 0x01; // opcode: Write
+	cmd.nsid = 1;
+	cmd.prp1 = (uint32_t)buf;
+	cmd.cdw10 = lba;
+	cmd.cdw11 = 0;
+	cmd.cdw12 = 0; // 1 block (NLB field = 0 means 1 block, zero-based)
+
+	io_sq[io_sq_tail] = cmd;
+	io_sq_tail = (io_sq_tail + 1) % 2;
+	*doorbell(1, 0) = io_sq_tail;
+
+	while ((io_cq[io_cq_head].status & 1) != io_cq_phase) ;
+	io_cq_head = (io_cq_head + 1) % 2;
+	if (io_cq_head == 0) io_cq_phase ^= 1;
+	*doorbell(1, 1) = io_cq_head;
+}
