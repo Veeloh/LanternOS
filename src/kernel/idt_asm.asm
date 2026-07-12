@@ -58,3 +58,12 @@ syscall_isr:
 	add esp, 16
 	popa
 	iret
+
+extern mouse_handler
+
+global mouse_isr
+mouse_isr:
+	pusha
+	call mouse_handler
+	popa 
+	iret
