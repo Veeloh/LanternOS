@@ -92,6 +92,7 @@ void mouse_handler() {
 extern void mouse_isr();
 
 void mouse_init() {
+	while (inb(PS2_STATUS) & 0x01) inb(PS2_DATA);
 	screen_w = (int)vga_get_fb_width();
 	screen_h = (int)vga_get_fb_height();
 	if (screen_w <= 0) screen_w = 320;
