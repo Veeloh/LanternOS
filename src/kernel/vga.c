@@ -177,3 +177,11 @@ void vga_get_cursor(int* x, int* y) {
 	*x = cursor_x;
 	*y = cursor_y;
 }
+
+uint32_t vga_get_fb_width() {
+	return fb_width;
+}
+
+uint32_t vga_get_fb_height() {
+	return fb_height;
+}
