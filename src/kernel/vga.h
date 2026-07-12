@@ -38,3 +38,5 @@ void vga_set_cursor(int x, int y);
 void vga_hide_cursor(void);
 void vga_get_cursor(int* x, int* y);
 
+uint32_t vga_get_fb_width(void);
+uint32_t vga_get_fb_height(void);
