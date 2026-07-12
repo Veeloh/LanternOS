@@ -9,6 +9,7 @@
 #include "fat32.h"
 #include "elf.h"
 #include "acpi.h"
+#include "mouse.h"
 
 #define MAX_CMD_LEN 256
 #define MAX_ARGS 16
@@ -453,6 +454,20 @@ static void cmd_poweroff(int argc, char** argv) {
 	acpi_poweroff();
 }
 
+static void cmd_mouse(int argc, char** argv) {
+	(void)argc; (void)argv;
+	vga_print("\nx=");
+	print_uint((uint32_t)mouse_get_x());
+	vga_print(" y=");
+	print_uint((uint32_t)mouse_get_y());
+	vga_print(" left=");
+	vga_print(mouse_left_pressed() ? "1" : "0");
+	vga_print(" right=");
+	vga_print(mouse_right_pressed() ? "1" : "0");
+	vga_print(" middle=");
+	vga_print(mouse_middle_pressed() ? "1" : "0");
+}
+
 // command table - add a new command by adding one line here, no need to
 // touch shell_execute() itself.
 typedef void (*shell_cmd_fn)(int argc, char** argv);
@@ -483,6 +498,7 @@ static shell_command_t commands[] = {
 	{ "syscalltest", "tests syscalls (mostly for dev use)",           cmd_syscalltest },
 	{ "run",         "run <file> - loads and runs an ELF executable", cmd_run },
 	{ "shiggle",     0 /* easter egg, not shown in help */,           cmd_shiggle },
+	{ "mouse",       "prints current mouse x/y and button state",     cmd_mouse },
 	{ "poweroff",	 "shuts down the machine",						  cmd_poweroff},
 };
 
