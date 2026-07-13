@@ -40,3 +40,7 @@ void vga_get_cursor(int* x, int* y);
 
 uint32_t vga_get_fb_width(void);
 uint32_t vga_get_fb_height(void);
+void vga_put_pixel(int x, int y, uint32_t rgb);
+uint32_t vga_get_pixel(int x, int y);
+void vga_fill_rect(int x, int y, int w, int h, uint32_t rgb);
+void vga_draw_rect(int x, int y, int w, int h, uint32_t rgb);
