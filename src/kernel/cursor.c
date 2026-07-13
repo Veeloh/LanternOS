@@ -53,14 +53,14 @@ static void draw_cursor(int x, int y) {
 		for (int i = 0; i < CURSOR_W; i++) {
 			char c = cursor_shape[j][i];
 			if (c == 'B') vga_put_pixel(x + i, y + j, 0x000000);
-			else if (c == 'W') vga_put_pixel(x + i, y + j, 0xFFEFD5);
+			else if (c == 'W') vga_put_pixel(x + i, y + j, 0xFAE588);
 		}
 	}
 }
 
 void cursor_update() {
-	int x, mouse_get_x();
-	int y, mouse_get_y();
+	int x = mouse_get_x();
+	int y = mouse_get_y();
 
 	if (x == last_x && y == last_y) return;
 
