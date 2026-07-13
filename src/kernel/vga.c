@@ -185,3 +185,40 @@ uint32_t vga_get_fb_width() {
 uint32_t vga_get_fb_height() {
 	return fb_height;
 }
+
+void vga_put_pixel(int x, int y, uint32_t rgb) {
+	if (x < 0 || y < 0) return;
+	put_pixel((uint32_t)x, (uint32_t)y, rgb);
+}
+
+uint32_t vga_get_pixel(int x, int y) {
+	if (x < 0 || y < 0 || (uint32_t)x >= fb_width || (uint32_t)y >= fb_height) return 0;
+	uint8_t* p = fb + y * fb_pitch + x * (fb_bpp / 8);
+	if (fb_bpp == 32) return *(uint32_t*)p;
+	if (fb_bpp == 24) return p[0] | (p[1] << 8) | (p[2] << 16);
+	if (fb_bpp == 16) {
+		uint16_t v = *(uint16_t*)p;
+		uint32_t r = ((v >> 11) & 0x1F) << 3;
+		uint32_t g = ((v >> 5) & 0x3F) << 2;
+		uint32_t b = (v & 0x1F) << 3;
+		return (r << 16) | (g << 8) | b;
+	}
+	return 0;
+}
+
+void vga_fill_rect(int x, int y, int w, int h, uint32_t rgb) {
+	for (int j = 0; j < h; j++)
+		for (int i = 0; i < w; i++)
+			vga_put_pixel(x + i, y + j, rgb);
+}
+
+void vga_draw_rect(int x, int y, int w, int h, uint32_t rgb) {
+	for (int i = 0; i < w; i++) {
+		vga_put_pixel(x + i, y, rgb);
+		vga_put_pixel(x + i, y + h - 1, rgb);
+	}
+	for (int j = 0; j < h; j++) {
+		vga_put_pixel(x, y + j, rgb);
+		vga_put_pixel(x + w - 1, y + j, rgb);
+	}
+}
