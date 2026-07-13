@@ -44,3 +44,4 @@ void vga_put_pixel(int x, int y, uint32_t rgb);
 uint32_t vga_get_pixel(int x, int y);
 void vga_fill_rect(int x, int y, int w, int h, uint32_t rgb);
 void vga_draw_rect(int x, int y, int w, int h, uint32_t rgb);
+void vga_draw_text(int x, int y, const char* str, uint32_t fg, uint32_t bg);
