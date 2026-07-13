@@ -222,3 +222,21 @@ void vga_draw_rect(int x, int y, int w, int h, uint32_t rgb) {
 		vga_put_pixel(x + w - 1, y + j, rgb);
 	}
 }
+
+void vga_draw_text(int x, int y, const char* str, uint32_t fg, uint32_t bg) {
+	static const uint8_t blank[FONT_H] = {0};
+	int px = x;
+	while (*str) {
+		int index = (unsigned char)*str - 32;
+		const uint8_t* glyph = (index < 0 || index >= 95) ? blank : font8x16[index];
+		for (int row = 0; row < FONT_H; row++) {
+			uint8_t bits = glyph[row];
+			for (int col = 0; col < FONT_W; col++) {
+				int set = (bits >> (7 - col)) & 1;
+				vga_put_pixel(px + col, y + row, set ? fg : bg);
+			}
+		}
+		px += FONT_W;
+		str++;
+	}
+}
