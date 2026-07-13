@@ -10,6 +10,7 @@
 #include "elf.h"
 #include "acpi.h"
 #include "mouse.h"
+#include "window.h"
 
 #define MAX_CMD_LEN 256
 #define MAX_ARGS 16
@@ -416,6 +417,11 @@ static void cmd_pwd(int argc, char** argv) {
 	vga_print(fat32_get_cwd());
 }
 
+static void cmd_desktop(int argc, char** argv) {
+	(void)argc; (void)argv;
+	window_demo();
+}
+
 static void cmd_syscalltest(int argc, char** argv) {
 	(void)argc; (void)argv;
 	vga_print("\n Testing syscall...");
@@ -499,6 +505,7 @@ static shell_command_t commands[] = {
 	{ "run",         "run <file> - loads and runs an ELF executable", cmd_run },
 	{ "shiggle",     0 /* easter egg, not shown in help */,           cmd_shiggle },
 	{ "mouse",       "prints current mouse x/y and button state",     cmd_mouse },
+	{ "desktop",     "enters graphical mode with a draggable window", cmd_desktop },
 	{ "poweroff",	 "shuts down the machine",						  cmd_poweroff},
 };
 
