@@ -15,6 +15,7 @@
 #include "disk.h"
 #include "acpi.h"
 #include "mouse.h"
+#include "cursor.h"
 
 void test_process() {
 	int i = 0;
@@ -98,6 +99,7 @@ void kernel_main(unsigned int multiboot_addr) {
 
 	while(1) {
 		shell_run();
+		cursor_update();
 	}
 
 }
