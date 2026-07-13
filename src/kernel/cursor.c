@@ -53,9 +53,13 @@ static void draw_cursor(int x, int y) {
 		for (int i = 0; i < CURSOR_W; i++) {
 			char c = cursor_shape[j][i];
 			if (c == 'B') vga_put_pixel(x + i, y + j, 0x000000);
-			else if (c == 'W') vga_put_pixel(x + i, y + j, 0xFAE588);
+			else if (c == 'W') vga_put_pixel(x + i, y + j, 0xFFEFD5);
 		}
 	}
+}
+
+void cursor_reset() {
+	saved_valid = 0;
 }
 
 void cursor_update() {
