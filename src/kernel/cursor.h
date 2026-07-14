@@ -5,3 +5,4 @@
 
 void cursor_update();
 void cursor_reset();
+void cursor_invalidate();
