@@ -202,9 +202,29 @@ void vga_clear_draw_target() {
 
 void vga_present(uint32_t* buf) {
 	if (!buf) return;
+
+	if (fb_bpp == 32) {
+		for (uint32_t y = 0; y < fb_height; y++) {
+			uint32_t* dst = (uint32_t*)(fb + y * fb_pitch);
+			uint32_t* src = buf + y * fb_width;
+			for (uint32_t x = 0; x < fb_width; x++) dst[x] = src[x];
+		}
+		return;
+	}
+
 	for (uint32_t y = 0; y < fb_height; y++) {
+		uint8_t* row = fb + y * fb_pitch;
 		for (uint32_t x = 0; x < fb_width; x++) {
-			put_pixel(x, y, buf[y * fb_width + x]);
+			uint32_t rgb = buf[y * fb_width + x];
+			uint8_t* p = row + x * (fb_bpp / 8);
+			if (fb_bpp == 24) {
+				p[0] = rgb & 0xFF;
+				p[1] = (rgb >> 8) & 0xFF;
+				p[2] = (rgb >> 16) & 0xFF;
+			} else if (fb_bpp == 16) {
+				uint8_t r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+				*(uint16_t*)p = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+			}
 		}
 	}
 }
