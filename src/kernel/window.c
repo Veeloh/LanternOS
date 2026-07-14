@@ -64,15 +64,18 @@ static void bring_to_front(int idx) {
 	z_order[window_count - 1] = idx;
 }
 
-void window_demo() {
+void desktop() {
 	int fb_w = (int)vga_get_fb_width();
 	int fb_h = (int)vga_get_fb_height();
+
+
 
 	uint32_t* backbuffer = (uint32_t*)kmalloc(fb_w * fb_h * sizeof(uint32_t));
 	if (!backbuffer) return;
 
 	vga_set_draw_target(backbuffer, fb_w, fb_h);
 	vga_fill_rect(0, 0, fb_w, fb_h, BG_COLOUR);
+
 	cursor_reset();
 
 	window_count = 4;

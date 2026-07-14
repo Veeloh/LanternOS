@@ -419,7 +419,7 @@ static void cmd_pwd(int argc, char** argv) {
 
 static void cmd_desktop(int argc, char** argv) {
 	(void)argc; (void)argv;
-	window_demo();
+	desktop();
 }
 
 static void cmd_syscalltest(int argc, char** argv) {
