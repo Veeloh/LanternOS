@@ -60,6 +60,8 @@ static void draw_cursor(int x, int y) {
 
 void cursor_reset() {
 	saved_valid = 0;
+	last_x = -1000;
+	last_y = -1000;
 }
 
 void cursor_update() {

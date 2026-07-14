@@ -11,7 +11,7 @@
 #define WIN_BORDER_COLOUR 0x000000
 #define WIN_TITLE_TEXT_COLOUR 0xFFFFFF
 
-typdef struct {
+typedef struct {
 	int x, y, w, h;
 	const char* title;
 } window_t;
@@ -19,8 +19,8 @@ typdef struct {
 static void draw_window(window_t* win) {
 	vga_fill_rect(win->x, win->y, win->w, TITLE_H, WIN_TITLE_COLOUR);
 	vga_fill_rect(win->x, win->y + TITLE_H, win->w, win->h - TITLE_H, WIN_BODY_COLOUR);
-	vga_fill_rect(win->x, win->y, win->w, win->h, WIN_BORDER_COLOUR);
-	vga_fill_rect(win->x + 6, win->y + 4, win->title, WIN_TITLE_TEXT_COLOUR, WIN_TITLE_COLOUR);
+	vga_draw_rect(win->x, win->y, win->w, win->h, WIN_BORDER_COLOUR);
+	vga_draw_text(win->x + 6, win->y + 4, win->title, WIN_TITLE_TEXT_COLOUR, WIN_TITLE_COLOUR);
 }
 
 static void erase_window(window_t* win) {
@@ -40,7 +40,6 @@ void window_demo() {
 
 	window_t win = { fb_w / 2 - 100, fb_h / 2 - 60, 200, 120, "SolOS"};
 	draw_window(&win);
-
 	int dragging = 0;
 	int drag_dx = 0;
 	int drag_dy = 0;
@@ -71,7 +70,7 @@ void window_demo() {
 			}
 		}
 
-		cursor_update
+		cursor_update;
 		char c = keyboard_getchar();
 		if (c == KEY_CTRL_C) break;
 	}
