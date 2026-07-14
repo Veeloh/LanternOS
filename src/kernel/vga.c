@@ -186,12 +186,44 @@ uint32_t vga_get_fb_height() {
 	return fb_height;
 }
 
+static uint32_t* draw_target = 0;
+static int target_w = 0;
+static int target_h = 0;
+
+void vga_set_draw_target(uint32_t* buf, int w, int h) {
+	draw_target = buf;
+	target_w = w;
+	target_h = h;
+}
+
+void vga_clear_draw_target() {
+	draw_target = 0;
+}
+
+void vga_present(uint32_t* buf) {
+	if (!buf) return;
+	for (uint32_t y = 0; y < fb_height; y++) {
+		for (uint32_t x = 0; x < fb_width; x++) {
+			put_pixel(x, y, buf[y * fb_width + x]);
+		}
+	}
+}
+
 void vga_put_pixel(int x, int y, uint32_t rgb) {
 	if (x < 0 || y < 0) return;
+	if (draw_target) {
+		if (x >= target_w || y >= target_h) return;
+		draw_target[y * target_w + x] = rgb;
+		return;
+	}
 	put_pixel((uint32_t)x, (uint32_t)y, rgb);
 }
 
 uint32_t vga_get_pixel(int x, int y) {
+	if (draw_target) {
+		if (x < 0 || y < 0 || x >= target_w || y >= target_h) return 0;
+		return draw_target[y * target_w + x];
+	}
 	if (x < 0 || y < 0 || (uint32_t)x >= fb_width || (uint32_t)y >= fb_height) return 0;
 	uint8_t* p = fb + y * fb_pitch + x * (fb_bpp / 8);
 	if (fb_bpp == 32) return *(uint32_t*)p;
