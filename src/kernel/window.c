@@ -84,9 +84,7 @@ void window_demo() {
 			}
 		}
 
-<<<<<<< HEAD
 		cursor_update();
-=======
 		if (mx != last_mouse_x || my != last_mouse_y) {
 			cursor_update();
 			need_present = 1;
@@ -96,7 +94,7 @@ void window_demo() {
 
 		if (need_present) vga_present(backbuffer);
 
->>>>>>> b52919363d68a5605785940bd755034101940a35
+
 		char c = keyboard_getchar();
 		if (c == KEY_CTRL_C) break;
 	}
