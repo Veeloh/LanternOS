@@ -137,7 +137,10 @@ void window_demo() {
 			dirty = 1;
 		}
 
-		if (window_moved) repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
+		if (window_moved) {
+			repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
+			cursor_invalidate();
+		}
 
 		if (cursor_moved) {
 			cursor_update();
