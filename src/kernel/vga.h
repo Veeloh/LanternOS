@@ -45,3 +45,6 @@ uint32_t vga_get_pixel(int x, int y);
 void vga_fill_rect(int x, int y, int w, int h, uint32_t rgb);
 void vga_draw_rect(int x, int y, int w, int h, uint32_t rgb);
 void vga_draw_text(int x, int y, const char* str, uint32_t fg, uint32_t bg);
+void vga_set_draw_target(uint32_t* buf, int w, int h);
+void vga_clear_draw_target(void);
+void vga_present(uint32_t* buf);
