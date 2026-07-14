@@ -2,7 +2,7 @@
 #include "pmm.h"
 
 #define HEAP_START 0x200000 //2mb
-#define HEAP_SIZE 0x100000 //1mb initall heap
+#define HEAP_SIZE 0x800000 //8mb - needs to fit a full-screen 32bpp backbuffer now
 
 typedef struct block_header {
 	uint32_t size;
