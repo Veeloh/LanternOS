@@ -6,11 +6,11 @@
 #include "heap.h"
 
 #define TITLE_H 20
-#define BG_COLOUR 0x2C3E50
-#define WIN_BODY_COLOUR 0xECF0F1
-#define WIN_TITLE_COLOUR 0x34495E
-#define WIN_BORDER_COLOUR 0x000000
-#define WIN_TITLE_TEXT_COLOUR 0xFFFFFF
+#define BG_COLOUR 0xE67E22
+#define WIN_BODY_COLOUR 0xFFF8DC
+#define WIN_TITLE_COLOUR 0xF39C12
+#define WIN_BORDER_COLOUR 0x6E2C00
+#define WIN_TITLE_TEXT_COLOUR 0x4A2511
 
 typedef struct {
 	int x, y, w, h;
