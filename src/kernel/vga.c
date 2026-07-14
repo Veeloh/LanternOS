@@ -229,6 +229,41 @@ void vga_present(uint32_t* buf) {
 	}
 }
 
+void vga_present_rect(uint32_t* buf, int rx, int ry, int rw, int rh) {
+	if (!buf) return;
+
+	if (rx < 0) { rw += rx; rx = 0; }
+	if (ry < 0) { rh += ry; ry = 0; }
+	if (rx + rw > (int)fb_width) rw = (int)fb_width - rx;
+	if (ry + rh > (int)fb_height) rh = (int)fb_height - ry;
+	if (rw <= 0 || rh <= 0) return;
+
+	if (fb_bpp == 32) {
+		for (int y = 0; y < rh; y++) {
+			uint32_t* dst = (uint32_t*)(fb + (ry + y) * fb_pitch) + rx;
+			uint32_t* src = buf + (ry + y) * (int)fb_width + rx;
+			for (int x = 0; x < rw; x++) dst[x] = src[x];
+		}
+		return;
+	}
+
+	for (int y = 0; y < rh; y++) {
+		uint8_t* row = fb + (ry + y) * fb_pitch;
+		for (int x = 0; x < rw; x++) {
+			uint32_t rgb = buf[(ry + y) * (int)fb_width + (rx + x)];
+			uint8_t* p = row + (rx + x) * (fb_bpp / 8);
+			if (fb_bpp == 24) {
+				p[0] = rgb & 0xFF;
+				p[1] = (rgb >> 8) & 0xFF;
+				p[2] = (rgb >> 16) & 0xFF;
+			} else if (fb_bpp == 16) {
+				uint8_t r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+				*(uint16_t*)p = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+			}
+		}
+	}
+}
+
 void vga_put_pixel(int x, int y, uint32_t rgb) {
 	if (x < 0 || y < 0) return;
 	if (draw_target) {

@@ -3,9 +3,6 @@
 #include "mouse.h"
 #include <stdint.h>
 
-#define CURSOR_W 11
-#define CURSOR_H 17
-
 static const char cursor_shape[CURSOR_H][CURSOR_W] = {
 	"B          ",
 	"BB         ",

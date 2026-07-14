@@ -70,29 +70,53 @@ void window_demo() {
 			dragging = 0;
 		}
 
-		int need_present = 0;
+		int dirty = 0;
+		int dx1 = fb_w, dy1 = fb_h, dx2 = 0, dy2 = 0;
 
 		if (dragging) {
 			int nx = mx - drag_dx;
 			int ny = my - drag_dy;
 			if (nx != win.x || ny != win.y) {
+				if (win.x < dx1) dx1 = win.x;
+				if (win.y < dy1) dy1 = win.y;
+				if (win.x + win.w > dx2) dx2 = win.x + win.w;
+				if (win.y + win.h > dy2) dy2 = win.y + win.h;
+
 				erase_window(&win);
 				win.x = nx;
 				win.y = ny;
 				draw_window(&win);
-				need_present = 1;
+
+				if (win.x < dx1) dx1 = win.x;
+				if (win.y < dy1) dy1 = win.y;
+				if (win.x + win.w > dx2) dx2 = win.x + win.w;
+				if (win.y + win.h > dy2) dy2 = win.y + win.h;
+
+				dirty = 1;
 			}
 		}
 
 		cursor_update();
+
 		if (mx != last_mouse_x || my != last_mouse_y) {
+			if (last_mouse_x < dx1) dx1 = last_mouse_x;
+			if (last_mouse_y < dy1) dy1 = last_mouse_y;
+			if (last_mouse_x + CURSOR_W > dx2) dx2 = last_mouse_x + CURSOR_W;
+			if (last_mouse_y + CURSOR_H > dy2) dy2 = last_mouse_y + CURSOR_H;
+
 			cursor_update();
-			need_present = 1;
+
+			if (mx < dx1) dx1 = mx;
+			if (my < dy1) dy1 = my;
+			if (mx + CURSOR_W > dx2) dx2 = mx + CURSOR_W;
+			if (my + CURSOR_H > dy2) dy2 = my + CURSOR_H;
+
+			dirty = 1;
 			last_mouse_x = mx;
 			last_mouse_y = my;
 		}
 
-		if (need_present) vga_present(backbuffer);
+		if (dirty) vga_present_rect(backbuffer, dx1, dy1, dx2 - dx1, dy2 - dy1);
 
 
 		char c = keyboard_getchar();

@@ -48,3 +48,4 @@ void vga_draw_text(int x, int y, const char* str, uint32_t fg, uint32_t bg);
 void vga_set_draw_target(uint32_t* buf, int w, int h);
 void vga_clear_draw_target(void);
 void vga_present(uint32_t* buf);
+void vga_present_rect(uint32_t* buf, int x, int y, int w, int h);
