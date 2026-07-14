@@ -70,7 +70,7 @@ void window_demo() {
 			}
 		}
 
-		cursor_update;
+		cursor_update();
 		char c = keyboard_getchar();
 		if (c == KEY_CTRL_C) break;
 	}
