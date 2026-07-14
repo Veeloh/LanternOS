@@ -61,6 +61,10 @@ void cursor_reset() {
 	last_y = -1000;
 }
 
+void cursor_invalidate() {
+	saved_valid = 0;
+}
+
 void cursor_update() {
 	int x = mouse_get_x();
 	int y = mouse_get_y();
