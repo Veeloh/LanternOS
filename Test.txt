@@ -1,0 +1,18 @@
+# MMIO base + size for the I2C controller ACPI device
+cat /sys/bus/platform/devices/AMD0010:02/resource
+
+# Its IRQ
+grep -i "AMD0010\|i2c" /proc/interrupts
+
+# Full dmesg detail on the Elan device (HID descriptor addr, report length, etc.)
+sudo dmesg | grep -i elan
+
+# Confirm the i2c-hid kernel driver's view of the device
+cat /sys/bus/i2c/devices/i2c-ELAN0000:00/modalias
+cat /sys/bus/i2c/devices/i2c-ELAN0000:00/name
+
+# Grab the ACPI tables so we can pull the exact _CRS for AMD0010:02
+sudo apt install -y acpica-tools 2>/dev/null
+sudo acpidump -o /tmp/acpi.dat
+cd /tmp && acpixtract -a acpi.dat && iasl -d dsdt.dat
+grep -A 20 "AMD0010" dsdt.dsl | head -60
