@@ -204,7 +204,7 @@ static void cmd_settime(int argc, char** argv) {
 	}
 
 	clock_set(h, m, s);
-	clock_draw();
+//	clock_draw();
 	vga_print("\nTime set.");
 }
 

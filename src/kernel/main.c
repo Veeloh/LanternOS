@@ -95,7 +95,7 @@ void kernel_main(unsigned int multiboot_addr) {
 //	vga_set_cursor(0, 1);
 //	vga_print("> ");
 	shell_init();
-	clock_draw();
+//	clock_draw();
 
 	while(1) {
 		shell_run();

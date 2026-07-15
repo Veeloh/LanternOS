@@ -46,7 +46,7 @@ void clock_tick() {
 		hours = 0;
 	}
 	
-	clock_draw();
+//	clock_draw();
 }
 
 void clock_draw() {

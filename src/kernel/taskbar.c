@@ -2,8 +2,7 @@
 #include "window.h"
 #include "vga.h"
 
-// Same warm palette as window.c's chrome, so the taskbar/start menu look
-// like they belong to the same desktop rather than a bolted-on strip.
+
 #define BG_COLOUR              0xE67E22
 #define PANEL_COLOUR           0xFFF8DC   // WIN_BODY_COLOUR
 #define ACCENT_COLOUR          0xF39C12   // WIN_TITLE_COLOUR

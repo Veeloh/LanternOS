@@ -14,9 +14,6 @@
 #define WIN_BORDER_COLOUR 0x6E2C00
 #define WIN_TITLE_TEXT_COLOUR 0x4A2511
 
-// centred desktop watermark - same sun glyph as the taskbar's top-left icon
-// (taskbar.c's draw_sun), just scaled up. Kept here rather than shared with
-// taskbar.c since the taskbar's version is tied to its fixed ICON_SZ.
 #define DESKTOP_LOGO_SIZE    96
 #define DESKTOP_LOGO_COLOUR  WIN_TITLE_COLOUR
 
@@ -25,8 +22,7 @@ static int z_order[MAX_WINDOWS];
 static int g_window_count = 0;
 static int g_fb_w = 0, g_fb_h = 0;
 
-// --- placeholder desktop info (see taskbar.h) - no battery/RTC-calendar
-// driver exists yet, so these stay hardcoded until that hardware work happens ---
+
 static int g_battery_pct = 100;
 static int g_charging = 0;
 static const char* g_weekday = "TUE";
