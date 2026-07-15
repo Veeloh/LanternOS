@@ -221,6 +221,7 @@ void desktop() {
 	int last_mouse_y = pointer_get_y();
 	int prev_pressed = 0;
 	uint8_t last_ss = 255;
+	int last_top = window_top_index(); // matches the title already drawn above
 
 	while (1) {
 		pointer_poll();
@@ -407,6 +408,21 @@ void desktop() {
 			}
 		} else if (!pressed) {
 			dragging_index = -1;
+		}
+
+		// whichever window is frontmost may have just changed (taskbar
+		// selection, clicking a window's body, or dragging one to front
+		// all call bring_to_front above) - the menu bar's top-right app
+		// name reflects that, so force it to repaint here instead of
+		// waiting for some unrelated menubar click to drag it along.
+		int top = window_top_index();
+		if (top != last_top) {
+			last_top = top;
+			int mbx, mby, mbw, mbh;
+			menubar_full_rect(fb_w, &mbx, &mby, &mbw, &mbh);
+			expand_rect(&dx1, &dy1, &dx2, &dy2, mbx, mby, mbw, mbh);
+			repaint_region(mbx, mby, mbw, mbh);
+			dirty = 1;
 		}
 
 		int window_moved = 0;
