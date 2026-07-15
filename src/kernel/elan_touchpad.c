@@ -13,11 +13,11 @@
 #define ETP_I2C_DESC_CMD    0x0001 // read HID descriptor (30 bytes)
 #define ETP_I2C_SET_CMD     0x0300 // set mode: 3rd byte = mode value
 #define ETP_ENABLE_ABS      0x0001 // absolute-mode value for SET_CMD
-#define ETP_I2C_REPORT_CMD  0x0100 // request one report (native Elan protocol,
-                                   // NOT the same as HID-over-I2C - there is
-                                   // no length prefix on the response, it's a
-                                   // fixed-size block returned directly)
-#define ETP_I2C_REPORT_LEN  34     // fixed body length for this mode
+#define ETP_I2C_REPORT_LEN  34     // fixed body length, confirmed against
+                                   // torvalds/linux drivers/input/mouse/elan_i2c_i2c.c:
+                                   // get_report() is a PLAIN i2c_master_recv() of
+                                   // exactly report_len bytes - no command word sent
+                                   // first, and no length prefix on the response.
 
 #define ELAN_ADDR7          0x15
 #define ELAN_DESC_LEN       30
@@ -99,19 +99,20 @@ int elan_init(void) {
 }
 
 void elan_poll(int dump_raw) {
-	// Native Elan I2C protocol (not HID-over-I2C): a report has to be
-	// explicitly requested with ETP_I2C_REPORT_CMD, the same write_read
-	// pattern already used for the HID descriptor. The response is a
-	// flat fixed-size block with NO length prefix - the earlier version
-	// of this function blind-read the bus and treated the first two
-	// bytes of real report data as a length header, which silently
-	// discarded every valid report and left raw_x/raw_y stuck at their
-	// initial 0,0 (the top-left-cursor / can't-move symptom).
-	uint8_t cmd[2];
-	le16_cmd(cmd, ETP_I2C_REPORT_CMD);
-
+	// Confirmed against torvalds/linux drivers/input/mouse/elan_i2c_i2c.c:
+	// elan_i2c_get_report() is a PLAIN i2c_master_recv() of exactly
+	// report_len (34) bytes - no command word sent first, no length
+	// prefix on the response. Two earlier versions of this function got
+	// this wrong in opposite directions: the original treated the first
+	// 2 bytes as a length header that doesn't exist (silently discarding
+	// every report and leaving raw_x/raw_y stuck at 0,0); the next one
+	// "fixed" that by sending a report-request command word first - but
+	// that command word was accidentally set to the same value as
+	// ETP_I2C_RESET, so every poll was quietly re-resetting the device
+	// instead of reading it, which is why the dump looked identical on
+	// every single line regardless of touch.
 	uint8_t body[ETP_I2C_REPORT_LEN];
-	if (i2c_dw_write_read(&elan_bus, ELAN_ADDR7, cmd, 2, body, ETP_I2C_REPORT_LEN) != 0)
+	if (i2c_dw_read(&elan_bus, ELAN_ADDR7, body, ETP_I2C_REPORT_LEN) != 0)
 		return;
 
 	if (dump_raw) {
