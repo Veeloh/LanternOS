@@ -29,14 +29,16 @@
 #define ELAN_DESC_LEN       30
 #define ELAN_REPORT_MAX     40  // generous upper bound on report length
 
-// UPDATED from a real controlled capture: raw_x/raw_y are single BYTES
-// (0-255), not 12-bit values - the drag-right/drag-down test showed X
-// spanning roughly 5-181 and Y roughly 45-85, but that was a single
-// partial drag, not a full corner-to-corner sweep, so the true max is
-// probably higher on both axes. 255 is a safe upper bound to start from;
-// tune down if the cursor never quite reaches the screen edges.
-#define ELAN_MAX_X 255
-#define ELAN_MAX_Y 255
+// raw_x/raw_y are now reconstructed 12-bit values (0-4095), per the real
+// elan_i2c wire format - see the decode in elan_poll() below. 4095 is a
+// generic upper bound; it's not this pad's true physical max_x/max_y
+// (those come from the device itself via separate ETP_I2C_MAX_X_CMD /
+// ETP_I2C_MAX_Y_CMD queries that this driver doesn't issue yet), so the
+// cursor may not reach every screen edge until that's added. Re-run a
+// corner-to-corner drag with elan_poll(1)'s raw dump to read off the
+// real observed max and tighten this if needed.
+#define ELAN_MAX_X 4095
+#define ELAN_MAX_Y 4095
 
 static i2c_dw_t elan_bus;
 
@@ -128,30 +130,42 @@ void elan_poll(int dump_raw) {
 
 	uint8_t* body = buf + 2;
 
-	// --- Parse: derived from a controlled hold/drag-right/drag-down
-	// capture, replacing the earlier 12-bit nibble-split guess (which
-	// doesn't match this hardware - this chip reports plain single-byte
-	// X/Y instead). body[0] held constant through the whole capture
-	// (one continuous touch, no click), body[2] climbed cleanly 0x05->0xB5
-	// during the rightward drag, body[3] climbed cleanly 0x2D->0x55 during
-	// the downward drag.
-	uint8_t status = body[0];
+	// --- Parse, matching the real elan_i2c wire format (verified against
+	// the upstream Linux driver, elan_report_contact() in
+	// elan_i2c_core.c):
+	//
+	//   body[0] = report ID (ETP_REPORT_ID, constant 0x5D) - this is what
+	//             the earlier version of this function was reading as
+	//             "status", which is why it always looked constant.
+	//   body[1] = touch info byte (ETP_TOUCH_INFO_OFFSET) - real status.
+	//   body[2..] = finger_data[0..4] (ETP_FINGER_DATA_OFFSET), 5 bytes
+	//             per finger:
+	//               finger_data[0] = (x_high_nibble << 4) | y_high_nibble
+	//               finger_data[1] = x_low_byte
+	//               finger_data[2] = y_low_byte
+	//               finger_data[3] = width
+	//               finger_data[4] = pressure
+	//
+	// The old code read finger_data[0] directly as raw_x (it's actually
+	// the packed high-nibble byte, which only changes once every ~16
+	// units of real movement - hence the "teleport" jumps) and
+	// finger_data[1] as raw_y (it's actually X's low byte). Neither was
+	// combined into the real 12-bit coordinate.
+	uint8_t touch_info = body[1];
+	uint8_t* finger_data = body + 2;
 
-	// NOTE: body[0] was constant (0x5D) through an un-clicked drag, so we
-	// can't yet trust which bit (if any) means "physical click" or "second
-	// finger" - the old bit positions were guessed against a DIFFERENT
-	// (misaligned) capture and are not re-verified here. Treating any
-	// length-34 report as "finger present" and leaving click detection at
-	// 0 until we capture a dedicated click-vs-no-click sample to diff.
-	int finger1_present = 1; // we only get here at all on a valid report
-	int physical_click  = 0; // unverified - see note above
-	(void)status;
+	// Upper nibble of the touch-info byte is the finger count on this
+	// device family; bit0 is the physical clickpad button. Kept as a
+	// best-effort mapping from the upstream driver's convention - worth
+	// re-verifying with a dedicated click-vs-no-click capture the same
+	// way the X/Y fix above was verified.
+	int finger_count    = (touch_info >> 4) & 0x0F;
+	int finger1_present = finger_count >= 1;
+	int physical_click  = touch_info & 0x01;
 
-	// This is a clickpad: one mechanical switch under the whole surface,
-	// not separate left/right buttons. Finger-count-based left/right
-	// synthesis (Windows/Linux convention: 1 finger = left, 2+ = right)
-	// is disabled until we re-verify the finger-count bits against real
-	// captures - for now, clicks always register as left-click.
+	// Clickpad: one mechanical switch under the whole surface, not
+	// separate left/right buttons, so any physical click registers as
+	// left-click.
 	if (physical_click) {
 		btn_left = 1;
 		btn_right = 0;
@@ -161,14 +175,14 @@ void elan_poll(int dump_raw) {
 	}
 
 	if (finger1_present) {
-		raw_x = body[2];
-		raw_y = body[3];
+		raw_x = ((finger_data[0] & 0xF0) << 4) | finger_data[1];
+		raw_y = ((finger_data[0] & 0x0F) << 8) | finger_data[2];
 	}
 
-	// Two-finger data (finger2_present) is scroll/gesture input on this
+	// Two-finger data (finger_count >= 2) is scroll/gesture input on this
 	// pad rather than pointer movement - not wired up to anything yet.
-	// Left as a hook: body + 6 is where finger2's 5-byte packet starts
-	// when finger2_present is set, same byte layout as finger1 above.
+	// Left as a hook: finger_data + 5 (i.e. body + 7) is where finger2's
+	// 5-byte packet starts, same layout as finger1 above.
 }
 
 int elan_get_raw_x(void) { return raw_x; }
