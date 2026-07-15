@@ -241,6 +241,49 @@ void fat32_list_dir() {
     }
 }
 
+int fat32_list_dir_entries(fat32_dirent_t* out, int max_entries) {
+    uint8_t buf[SECTOR_SIZE];
+    uint32_t cluster = current_dir_cluster;
+    uint32_t hops = 0;
+    int count = 0;
+
+    while (cluster < 0x0FFFFFF8) {
+        // unlike fat32_list_dir(), a corrupt/too-long chain just returns
+        // whatever we've collected so far rather than vga_print-ing -
+        // callers have no text console to report to.
+        if (++hops > MAX_CLUSTER_CHAIN) return count;
+
+        uint32_t lba = cluster_to_lba(cluster);
+        for (uint32_t s = 0; s < bpb.sectors_per_cluster; s++) {
+            fat_read_sector(lba + s, buf);
+            fat32_entry_t* entry = (fat32_entry_t*)buf;
+            for (int i = 0; i < SECTOR_SIZE / sizeof(fat32_entry_t); i++) {
+                if (entry[i].name[0] == 0) return count;
+                if (entry[i].name[0] == 0xE5) continue;
+                if (entry[i].attributes & 0x0F) continue; // skip LFN
+                if (count >= max_entries) return count;
+
+                int p = 0;
+                for (int j = 0; j < 8; j++)
+                    if (entry[i].name[j] != ' ')
+                        out[count].name[p++] = entry[i].name[j];
+                if (entry[i].name[8] != ' ') {
+                    out[count].name[p++] = '.';
+                    for (int j = 8; j < 11; j++)
+                        if (entry[i].name[j] != ' ')
+                            out[count].name[p++] = entry[i].name[j];
+                }
+                out[count].name[p] = 0;
+                out[count].size = entry[i].size;
+                out[count].is_dir = (entry[i].attributes & 0x10) ? 1 : 0;
+                count++;
+            }
+        }
+        cluster = fat_next_cluster(cluster);
+    }
+    return count;
+}
+
 int fat32_read_file(const char* name, uint8_t* buffer, uint32_t max_size) {
     uint8_t buf[SECTOR_SIZE];
     uint32_t cluster = current_dir_cluster;
