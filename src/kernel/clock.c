@@ -17,6 +17,12 @@ void clock_set(uint8_t h, uint8_t m, uint8_t s) {
 	seconds = s;
 }
 
+void clock_get(uint8_t* h, uint8_t* m, uint8_t* s) {
+	*h = hours;
+	*m = minutes;
+	*s = seconds;
+}
+
 void clock_init(uint8_t h, uint8_t m, uint8_t s) {
 	clock_set(h, m, s);
 	tick_count = 0;
@@ -60,4 +66,3 @@ void clock_draw() {
 	vga_set_cursor(old_x, old_y);
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 }
-
