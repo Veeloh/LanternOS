@@ -88,6 +88,14 @@ static int check_abort(i2c_dw_t* bus) {
 	if (rd(bus, IC_RAW_INTR_STAT) & (1u << 6)) { // TX_ABRT bit
 		(void)rd(bus, IC_TX_ABRT_SOURCE);
 		(void)rd(bus, IC_CLR_TX_ABRT);
+		(void)rd(bus, IC_CLR_STOP_DET);
+		// Recover: cycle the controller off/on so its internal state
+		// machine and FIFOs reset cleanly, instead of leaving it wedged
+		// for every future transaction after one abort/NACK.
+		wr(bus, IC_ENABLE, 0);
+		for (volatile int i = 0; i < 1000; i++);
+		wr(bus, IC_ENABLE, 1);
+		for (volatile int i = 0; i < 1000; i++);
 		return -1;
 	}
 	return 0;
