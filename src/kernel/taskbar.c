@@ -2,7 +2,8 @@
 #include "window.h"
 #include "vga.h"
 
-
+// Same warm palette as window.c's chrome, so the taskbar/start menu look
+// like they belong to the same desktop rather than a bolted-on strip.
 #define BG_COLOUR              0xE67E22
 #define PANEL_COLOUR           0xFFF8DC   // WIN_BODY_COLOUR
 #define ACCENT_COLOUR          0xF39C12   // WIN_TITLE_COLOUR
@@ -154,6 +155,49 @@ static void draw_start_icon(int x, int y, int open) {
 	vga_fill_rect(gx + s + gap, gy + s + gap, s, s, dot);
 }
 
+// small filled disc, built from vga_put_pixel since there's no circle
+// primitive yet - used by the gear icon below
+static void draw_filled_circle(int cx, int cy, int r, uint32_t colour) {
+	for (int dy = -r; dy <= r; dy++) {
+		for (int dx = -r; dx <= r; dx++) {
+			if (dx * dx + dy * dy <= r * r) vga_put_pixel(cx + dx, cy + dy, colour);
+		}
+	}
+}
+
+// start-menu "Files" icon: a manila-folder silhouette (tab + body), drawn
+// into an SM_ICON_SZ chip that the caller has already filled/outlined
+static void draw_folder_icon(int x, int y, uint32_t colour) {
+	int tab_x = x + 8, tab_y = y + 9;
+	vga_fill_rect(tab_x, tab_y, 11, 4, colour);
+
+	int body_x = x + 5, body_y = y + 13;
+	int body_w = SM_ICON_SZ - 10, body_h = SM_ICON_SZ - 19;
+	vga_fill_rect(body_x, body_y, body_w, body_h, colour);
+}
+
+// start-menu "Settings" icon: a gear - filled disc, 8 stubby teeth, and a
+// punched-out centre hole (drawn in the chip's own background colour so
+// it reads as a hole rather than a solid dot)
+static void draw_gear_icon(int x, int y, uint32_t colour) {
+	int cx = x + SM_ICON_SZ / 2, cy = y + SM_ICON_SZ / 2;
+	int r = 8;
+
+	draw_filled_circle(cx, cy, r, colour);
+
+	// cardinal + diagonal teeth
+	vga_fill_rect(cx - 2, y + 2,  4, 4, colour);              // N
+	vga_fill_rect(cx - 2, y + SM_ICON_SZ - 6, 4, 4, colour);  // S
+	vga_fill_rect(x + 2, cy - 2, 4, 4, colour);               // W
+	vga_fill_rect(x + SM_ICON_SZ - 6, cy - 2, 4, 4, colour);  // E
+	vga_fill_rect(cx - r - 1, cy - r - 1, 4, 4, colour);      // NW
+	vga_fill_rect(cx + r - 2, cy - r - 1, 4, 4, colour);      // NE
+	vga_fill_rect(cx - r - 1, cy + r - 2, 4, 4, colour);      // SW
+	vga_fill_rect(cx + r - 2, cy + r - 2, 4, 4, colour);      // SE
+
+	draw_filled_circle(cx, cy, 3, ICON_CHIP_COLOUR);          // centre hole
+}
+
 static void draw_app_chip(int x, int y, char letter, int highlighted) {
 	vga_fill_rect(x, y, ICON_SZ, ICON_SZ, ICON_CHIP_COLOUR);
 	vga_draw_rect(x, y, ICON_SZ, ICON_SZ, highlighted ? ACCENT_COLOUR : TASKBAR_BG_COLOUR);
@@ -236,12 +280,12 @@ void taskbar_draw(int fb_h, int battery_pct, int charging,
 		int col_x = SM_PANEL_X + 12, col_y = SM_PANEL_Y + SM_HEADER_H + 12;
 		vga_fill_rect(col_x, col_y, SM_ICON_SZ, SM_ICON_SZ, ICON_CHIP_COLOUR);
 		vga_draw_rect(col_x, col_y, SM_ICON_SZ, SM_ICON_SZ, BORDER_COLOUR);
-		vga_draw_rect(col_x + 8, col_y + 10, SM_ICON_SZ - 16, SM_ICON_SZ - 18, TEXT_DARK_COLOUR); // folder-ish
+		draw_folder_icon(col_x, col_y, TEXT_DARK_COLOUR);
 
 		int col2_y = col_y + SM_ICON_SZ + 10;
 		vga_fill_rect(col_x, col2_y, SM_ICON_SZ, SM_ICON_SZ, ICON_CHIP_COLOUR);
 		vga_draw_rect(col_x, col2_y, SM_ICON_SZ, SM_ICON_SZ, BORDER_COLOUR);
-		vga_fill_rect(col_x + 13, col2_y + 4, 10, 10, TEXT_DARK_COLOUR); // gear-ish nub
+		draw_gear_icon(col_x, col2_y, TEXT_DARK_COLOUR);
 
 		// right panel: reserved for pinned/suggested apps
 		int rp_x = col_x + SM_ICON_SZ + 12;
