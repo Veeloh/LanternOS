@@ -13,6 +13,11 @@
 #define ETP_I2C_DESC_CMD    0x0001 // read HID descriptor (30 bytes)
 #define ETP_I2C_SET_CMD     0x0300 // set mode: 3rd byte = mode value
 #define ETP_ENABLE_ABS      0x0001 // absolute-mode value for SET_CMD
+#define ETP_I2C_MAX_X_AXIS_CMD 0x0106 // pulled directly from Linux's
+#define ETP_I2C_MAX_Y_AXIS_CMD 0x0107 // elan_i2c_i2c.c elan_i2c_get_max()
+#define ETP_REPORT_ID       0x5D  // elan_i2c.h ETP_REPORT_ID - only value
+                                   // this pad's report[ETP_REPORT_ID_OFFSET]
+                                   // should ever be (confirmed via capture)
 #define ETP_I2C_REPORT_LEN  34     // body length. CONFIRMED against a real
                                    // capture: touch reports start with two
                                    // bytes that read as little-endian 0x0022
@@ -29,16 +34,17 @@
 #define ELAN_DESC_LEN       30
 #define ELAN_REPORT_MAX     40  // generous upper bound on report length
 
-// raw_x/raw_y are now reconstructed 12-bit values (0-4095), per the real
-// elan_i2c wire format - see the decode in elan_poll() below. 4095 is a
-// generic upper bound; it's not this pad's true physical max_x/max_y
-// (those come from the device itself via separate ETP_I2C_MAX_X_CMD /
-// ETP_I2C_MAX_Y_CMD queries that this driver doesn't issue yet), so the
-// cursor may not reach every screen edge until that's added. Re-run a
-// corner-to-corner drag with elan_poll(1)'s raw dump to read off the
-// real observed max and tighten this if needed.
-#define ELAN_MAX_X 4095
-#define ELAN_MAX_Y 4095
+// raw_x/raw_y are reconstructed 12-bit values (0-4095 max range), per the
+// real elan_i2c wire format - see the decode in elan_poll() below.
+// ELAN_MAX_X/Y_FALLBACK are only used if the ETP_I2C_MAX_X/Y_AXIS_CMD
+// queries in elan_init() fail; elan_init() otherwise fills in the real
+// physical max_x/max_y straight from the device, same as Linux's
+// elan_i2c_get_max().
+#define ELAN_MAX_X_FALLBACK 4095
+#define ELAN_MAX_Y_FALLBACK 4095
+
+static int elan_max_x = ELAN_MAX_X_FALLBACK;
+static int elan_max_y = ELAN_MAX_Y_FALLBACK;
 
 static i2c_dw_t elan_bus;
 
@@ -102,6 +108,32 @@ int elan_init(void) {
 		return -1;
 	}
 
+	// Query the real physical max X/Y straight from the device, ported
+	// directly from Linux's elan_i2c_get_max() (elan_i2c_i2c.c): each is
+	// a 2-byte command word followed by a 2-byte little-endian response,
+	// same write_read pattern as the descriptor read above. Falls back
+	// to the generic 4095 bound if either query fails, rather than
+	// aborting init over it.
+	uint8_t val[2];
+	le16_cmd(cmd, ETP_I2C_MAX_X_AXIS_CMD);
+	if (i2c_dw_write_read(&elan_bus, ELAN_ADDR7, cmd, 2, val, 2) == 0) {
+		elan_max_x = val[0] | (val[1] << 8);
+	} else {
+		vga_print("\nelan: max-X query failed, using fallback bound");
+	}
+
+	le16_cmd(cmd, ETP_I2C_MAX_Y_AXIS_CMD);
+	if (i2c_dw_write_read(&elan_bus, ELAN_ADDR7, cmd, 2, val, 2) == 0) {
+		elan_max_y = val[0] | (val[1] << 8);
+	} else {
+		vga_print("\nelan: max-Y query failed, using fallback bound");
+	}
+
+	vga_print("\nelan: max_x=");
+	print_hex8((elan_max_x >> 8) & 0xFF); print_hex8(elan_max_x & 0xFF);
+	vga_print(" max_y=");
+	print_hex8((elan_max_y >> 8) & 0xFF); print_hex8(elan_max_y & 0xFF);
+
 	vga_print("\nelan: init sequence complete");
 	return 0;
 }
@@ -129,6 +161,16 @@ void elan_poll(int dump_raw) {
 	                                        // it rather than misparse it.
 
 	uint8_t* body = buf + 2;
+
+	// Linux's elan_isr() switches on report[ETP_REPORT_ID_OFFSET] and
+	// drops anything that isn't a report ID it recognizes, rather than
+	// trusting the length alone. Port that check here too: this pad only
+	// ever sends ETP_REPORT_ID (0x5D) reports (confirmed via capture) -
+	// if a read ever comes back with a different byte here, it's either
+	// a report type we don't parse (trackpoint, high-precision) or a
+	// torn/misaligned read that happened to still pass the length check,
+	// and either way it should be dropped, not parsed as finger data.
+	if (body[0] != ETP_REPORT_ID) return;
 
 	// --- Parse, matching the real elan_i2c wire format (verified against
 	// the upstream Linux driver, elan_report_contact() in
@@ -182,7 +224,7 @@ void elan_poll(int dump_raw) {
 	// finger somewhere new on the pad is a legitimate large jump, not
 	// corrupted data. If legit fast drags start getting rejected too,
 	// raise MAX_JUMP.
-	#define ELAN_MAX_JUMP (ELAN_MAX_X / 6)
+	#define ELAN_MAX_JUMP (elan_max_x / 6)
 	if (finger1_present) {
 		int nx = ((finger_data[0] & 0xF0) << 4) | finger_data[1];
 		int ny = ((finger_data[0] & 0x0F) << 8) | finger_data[2];
@@ -215,7 +257,7 @@ int elan_get_raw_y(void) { return raw_y; }
 int elan_get_x(void) {
 	int screen_w = (int)vga_get_fb_width();
 	if (screen_w <= 0) screen_w = 320;
-	int x = (raw_x * screen_w) / ELAN_MAX_X;
+	int x = (raw_x * screen_w) / elan_max_x;
 	if (x < 0) x = 0;
 	if (x >= screen_w) x = screen_w - 1;
 	return x;
@@ -224,10 +266,12 @@ int elan_get_x(void) {
 int elan_get_y(void) {
 	int screen_h = (int)vga_get_fb_height();
 	if (screen_h <= 0) screen_h = 200;
-	int y = (raw_y * screen_h) / ELAN_MAX_Y;
+	int y = (raw_y * screen_h) / elan_max_y;
 	// Elan's raw Y increases moving UP the pad (away from the user),
 	// opposite of screen Y which increases downward - flip it here so
-	// moving your finger up moves the cursor up.
+	// moving your finger up moves the cursor up. This matches Linux's
+	// own elan_report_contact(): input_report_abs(..., ABS_MT_POSITION_Y,
+	// data->max_y - pos_y).
 	y = (screen_h - 1) - y;
 	if (y < 0) y = 0;
 	if (y >= screen_h) y = screen_h - 1;
