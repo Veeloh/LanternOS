@@ -1,4 +1,5 @@
-# MMIO base + size for the I2C controller ACPI device
+matias@dev-machine:/tmp$ cd ..
+matias@dev-machine:/$ # MMIO base + size for the I2C controller ACPI device
 cat /sys/bus/platform/devices/AMD0010:02/resource
 
 # Its IRQ
@@ -16,3 +17,117 @@ sudo apt install -y acpica-tools 2>/dev/null
 sudo acpidump -o /tmp/acpi.dat
 cd /tmp && acpixtract -a acpi.dat && iasl -d dsdt.dat
 grep -A 20 "AMD0010" dsdt.dsl | head -60
+cat: '/sys/bus/platform/devices/AMD0010:02/resource': No such file or directory
+  3:          0          0   IO-APIC   3-edge      AMD0010:00
+  6:     257527          0   IO-APIC   6-edge      AMD0010:02
+ 14:          0          0   IO-APIC  14-edge      AMD0010:03
+ 15:          0      13898   IO-APIC  15-edge      AMD0010:01
+ 33:       1900          0  amd_gpio   9  cr50_i2c
+[   30.720200] elan_i2c i2c-ELAN0000:00: supply vcc not found, using dummy regulator
+[   30.838790] elan_i2c i2c-ELAN0000:00: Elan Touchpad: Module ID: 0x00cd, Firmware: 0x0002, Sample: 0x0002, IAP: 0x000e
+[   30.839036] input: Elan Touchpad as /devices/platform/AMD0010:02/i2c-2/i2c-ELAN0000:00/input/input4
+acpi:ELAN0000:
+ELAN0000:00
+acpica-tools is already the newest version (20250404-1).
+The following packages were automatically installed and are no longer required:
+  gamemode-daemon  libgamemode0  libinih1  libretro-core-info  libxcb-dri2-0:i386  steam-libs:i386
+Use 'sudo apt autoremove' to remove them.
+
+Summary:
+  Upgrading: 0, Installing: 0, Removing: 0, Not Upgrading: 201
+Target path already exists, overwrite? [y|n] n
+
+Intel ACPI Component Architecture
+ACPI Binary Table Extraction Utility version 20250404
+Copyright (c) 2000 - 2025 Intel Corporation
+
+  MCFG -      60 bytes written (0x0000003C) - mcfg.dat
+  APIC -     110 bytes written (0x0000006E) - apic.dat
+  SSDT -   19291 bytes written (0x00004B5B) - ssdt1.dat
+  TPM2 -      76 bytes written (0x0000004C) - tpm2.dat
+  VFCT -   65128 bytes written (0x0000FE68) - vfct.dat
+  DSDT -   14769 bytes written (0x000039B1) - dsdt.dat
+  DBG2 -      84 bytes written (0x00000054) - dbg2.dat
+  HEST -      40 bytes written (0x00000028) - hest.dat
+  FACP -     276 bytes written (0x00000114) - facp.dat
+  SSDT -    3311 bytes written (0x00000CEF) - ssdt2.dat
+  HPET -      56 bytes written (0x00000038) - hpet.dat
+  FACS -      64 bytes written (0x00000040) - facs.dat
+  BGRT -      56 bytes written (0x00000038) - bgrt.dat
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20250404
+Copyright (c) 2000 - 2025 Intel Corporation
+
+File appears to be binary: found 4498 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file dsdt.dat, Length 0x39B1 (14769) bytes
+ACPI: DSDT 0x0000000000000000 0039B1 (v02 COREv4 COREBOOT 00010001 INTL 20250807)
+Pass 1 parse of [DSDT]
+Pass 2 parse of [DSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed
+Disassembly completed
+ASL Output:    dsdt.dsl - 125673 bytes
+            Name (_HID, "AMD0010")  // _HID: Hardware ID
+            Name (_UID, Zero)  // _UID: Unique ID
+            Name (_CRS, ResourceTemplate ()  // _CRS: Current Resource Settings
+            {
+                IRQ (Edge, ActiveHigh, Exclusive, )
+                    {3}
+                Memory32Fixed (ReadWrite,
+                    0xFEDC2000,         // Address Base
+                    0x00001000,         // Address Length
+                    )
+            })
+            Name (STAT, Zero)
+            Method (_STA, 0, NotSerialized)  // _STA: Status
+            {
+                Return (STAT) /* \_SB_.I2CA.STAT */
+            }
+        }
+
+        Device (I2CB)
+        {
+            Name (_HID, "AMD0010")  // _HID: Hardware ID
+            Name (_UID, One)  // _UID: Unique ID
+            Name (_CRS, ResourceTemplate ()  // _CRS: Current Resource Settings
+            {
+                IRQ (Edge, ActiveHigh, Exclusive, )
+                    {15}
+                Memory32Fixed (ReadWrite,
+                    0xFEDC3000,         // Address Base
+                    0x00001000,         // Address Length
+                    )
+            })
+            Name (STAT, Zero)
+            Method (_STA, 0, NotSerialized)  // _STA: Status
+            {
+                Return (STAT) /* \_SB_.I2CB.STAT */
+            }
+        }
+
+        Device (I2CC)
+        {
+            Name (_HID, "AMD0010")  // _HID: Hardware ID
+            Name (_UID, 0x02)  // _UID: Unique ID
+            Name (_CRS, ResourceTemplate ()  // _CRS: Current Resource Settings
+            {
+                IRQ (Edge, ActiveHigh, Exclusive, )
+                    {6}
+                Memory32Fixed (ReadWrite,
+                    0xFEDC4000,         // Address Base
+                    0x00001000,         // Address Length
+                    )
+            })
+            Name (STAT, Zero)
+            Method (_STA, 0, NotSerialized)  // _STA: Status
+            {
+                Return (STAT) /* \_SB_.I2CC.STAT */
+            }
+        }
+
+        Device (I2CD)
+        {
+matias@dev-machine:/tmp$ 
