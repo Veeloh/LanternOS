@@ -4,6 +4,7 @@
 #include "menubar.h"
 #include "vga.h"
 #include "mouse.h"
+#include "pointer.h"
 #include "cursor.h"
 #include "keyboard.h"
 #include "heap.h"
@@ -216,15 +217,16 @@ void desktop() {
 	int dragging_index = -1;
 	int drag_dx = 0;
 	int drag_dy = 0;
-	int last_mouse_x = mouse_get_x();
-	int last_mouse_y = mouse_get_y();
+	int last_mouse_x = pointer_get_x();
+	int last_mouse_y = pointer_get_y();
 	int prev_pressed = 0;
 	uint8_t last_ss = 255;
 
 	while (1) {
-		int mx = mouse_get_x();
-		int my = mouse_get_y();
-		int pressed = mouse_left_pressed();
+		pointer_poll();
+		int mx = pointer_get_x();
+		int my = pointer_get_y();
+		int pressed = pointer_left_pressed();
 		int clicked = pressed && !prev_pressed; // rising edge
 
 		int dirty = 0;
