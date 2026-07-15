@@ -16,6 +16,7 @@
 #include "acpi.h"
 #include "mouse.h"
 #include "cursor.h"
+#include "elan_touchpad.h"
 
 void test_process() {
 	int i = 0;
@@ -70,6 +71,7 @@ void kernel_main(unsigned int multiboot_addr) {
 	
 	keyboard_init();
 	mouse_init();
+	elan_init();
 	timer_init(100);
 	clock_init(0,0,0);
 
@@ -100,6 +102,7 @@ void kernel_main(unsigned int multiboot_addr) {
 	while(1) {
 		shell_run();
 		cursor_update();
+		elan_poll(1);
 	}
 
 }
