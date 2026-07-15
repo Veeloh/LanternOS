@@ -13,6 +13,11 @@
 #define ETP_I2C_DESC_CMD    0x0001 // read HID descriptor (30 bytes)
 #define ETP_I2C_SET_CMD     0x0300 // set mode: 3rd byte = mode value
 #define ETP_ENABLE_ABS      0x0001 // absolute-mode value for SET_CMD
+#define ETP_I2C_REPORT_CMD  0x0100 // request one report (native Elan protocol,
+                                   // NOT the same as HID-over-I2C - there is
+                                   // no length prefix on the response, it's a
+                                   // fixed-size block returned directly)
+#define ETP_I2C_REPORT_LEN  34     // fixed body length for this mode
 
 #define ELAN_ADDR7          0x15
 #define ELAN_DESC_LEN       30
@@ -94,24 +99,24 @@ int elan_init(void) {
 }
 
 void elan_poll(int dump_raw) {
-	// Read the WHOLE report (2-byte length header + fixed 34-byte body) as
-	// ONE continuous I2C transaction. Doing this as two separate reads
-	// (header, then body) was the bug behind the erratic jumps and
-	// eventual freeze-ups: each separate read ends its own transaction
-	// with a STOP, and between two back-to-back transactions the chip can
-	// re-latch a newer report mid-way through, tearing the data - or NACK
-	// the second one outright, which silently froze position updates with
-	// no recovery. One transaction start-to-finish avoids both.
-	uint8_t buf[ELAN_REPORT_MAX];
-	const int total_len = 2 + 34; // 2-byte length prefix + fixed 34-byte body
-	if (i2c_dw_read(&elan_bus, ELAN_ADDR7, buf, total_len) != 0) return;
+	// Native Elan I2C protocol (not HID-over-I2C): a report has to be
+	// explicitly requested with ETP_I2C_REPORT_CMD, the same write_read
+	// pattern already used for the HID descriptor. The response is a
+	// flat fixed-size block with NO length prefix - the earlier version
+	// of this function blind-read the bus and treated the first two
+	// bytes of real report data as a length header, which silently
+	// discarded every valid report and left raw_x/raw_y stuck at their
+	// initial 0,0 (the top-left-cursor / can't-move symptom).
+	uint8_t cmd[2];
+	le16_cmd(cmd, ETP_I2C_REPORT_CMD);
 
-	int len = buf[0] | (buf[1] << 8);
-	if (len == 0 || len > ELAN_REPORT_MAX - 2) return; // nothing ready / bogus
+	uint8_t body[ETP_I2C_REPORT_LEN];
+	if (i2c_dw_write_read(&elan_bus, ELAN_ADDR7, cmd, 2, body, ETP_I2C_REPORT_LEN) != 0)
+		return;
 
 	if (dump_raw) {
 		vga_print("\nelan report: ");
-		for (int i = 0; i < len + 2 && i < 16; i++) { print_hex8(buf[i]); vga_print(" "); }
+		for (int i = 0; i < ETP_I2C_REPORT_LEN && i < 16; i++) { print_hex8(body[i]); vga_print(" "); }
 	}
 
 	// --- Parse confirmed against real captured hardware output. ---
@@ -120,8 +125,6 @@ void elan_poll(int dump_raw) {
 	// Each present finger is a 5-byte packet immediately following (in
 	// finger-slot order): byte0 = (x_hi<<4)|y_hi (top nibbles of 12-bit
 	// X/Y), byte1 = x_low, byte2 = y_low, byte3 = pressure, byte4 = width.
-	if (len < 1) return;
-	uint8_t* body = buf + 2;
 	uint8_t status = body[0];
 
 	int finger1_present = status & 0x08;
@@ -146,7 +149,7 @@ void elan_poll(int dump_raw) {
 		btn_right = 0;
 	}
 
-	if (finger1_present && len >= 6) {
+	if (finger1_present) {
 		uint8_t* f = body + 1;
 		int x_hi = (f[0] >> 4) & 0xF;
 		int y_hi = f[0] & 0xF;
