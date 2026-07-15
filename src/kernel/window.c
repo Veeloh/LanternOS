@@ -170,61 +170,72 @@ void desktop() {
 		int taskbar_consumed = 0;
 
 		if (clicked) {
-			int menu_open_before = taskbar_start_menu_open();
-			int click_targets_taskbar = (mx >= 0 && mx < TASKBAR_W) || menu_open_before;
+    int menu_open_before = taskbar_start_menu_open();
+    int click_targets_taskbar = (mx >= 0 && mx < TASKBAR_W) || menu_open_before;
 
-			int out_idx = -1;
-			tb_action_t action = taskbar_handle_click(mx, my, &out_idx);
-			taskbar_consumed = click_targets_taskbar;
+    // capture the taskbar/start-menu's on-screen footprint BEFORE the
+    // click can mutate s_start_menu_open, so a closing click still
+    // invalidates the full (wider) area the panel used to occupy.
+    int tx0, ty0, tw0, th0;
+    taskbar_full_rect(fb_h, &tx0, &ty0, &tw0, &th0);
 
-			switch (action) {
-				case TB_POWER:
-					acpi_poweroff(); // does not return on success
-					break;
+    int out_idx = -1;
+    tb_action_t action = taskbar_handle_click(mx, my, &out_idx);
+    taskbar_consumed = click_targets_taskbar;
 
-				case TB_OPEN_TERMINAL: {
-					int idx = find_window_by_title("Terminal");
-					if (idx == -1) idx = spawn_window("Terminal", 240, 150);
-					if (idx != -1) {
-						bring_to_front(idx);
-						window_t* w = &windows[idx];
-						expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
-						dirty = 1;
-					}
-					break;
-				}
+    switch (action) {
+        case TB_POWER:
+            acpi_poweroff(); // does not return on success
+            break;
 
-				case TB_SELECT_WINDOW: {
-					bring_to_front(out_idx);
-					window_t* w = &windows[out_idx];
-					expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
-					dirty = 1;
-					break;
-				}
+        case TB_OPEN_TERMINAL: {
+            int idx = find_window_by_title("Terminal");
+            if (idx == -1) idx = spawn_window("Terminal", 240, 150);
+            if (idx != -1) {
+                bring_to_front(idx);
+                window_t* w = &windows[idx];
+                expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
+                dirty = 1;
+            }
+            break;
+        }
 
-				case TB_RETURN_TO_SHELL:
-				case TB_OPEN_FILES:
-				case TB_OPEN_SETTINGS:
-				case TB_NONE:
-				default:
-					break;
-			}
+        case TB_SELECT_WINDOW: {
+            bring_to_front(out_idx);
+            window_t* w = &windows[out_idx];
+            expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
+            dirty = 1;
+            break;
+        }
 
-			if (action == TB_RETURN_TO_SHELL) {
-				break; // exit desktop() back to the text-mode shell
-			}
+        case TB_RETURN_TO_SHELL:
+        case TB_OPEN_FILES:
+        case TB_OPEN_SETTINGS:
+        case TB_NONE:
+        default:
+            break;
+    }
 
-			if (taskbar_consumed) {
-				// the start menu opening/closing (or a files/settings stub
-				// click, harmless no-ops for now) can change what's on
-				// screen in the taskbar/menu column, so fold that in too.
-				int tx, ty, tw, th;
-				taskbar_full_rect(fb_h, &tx, &ty, &tw, &th);
-				expand_rect(&dx1, &dy1, &dx2, &dy2, tx, ty, tw, th);
-				dirty = 1;
-				repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
-			}
-		}
+    if (action == TB_RETURN_TO_SHELL) {
+        break; // exit desktop() back to the text-mode shell
+    }
+
+    if (taskbar_consumed) {
+        // the start menu opening/closing (or a files/settings stub
+        // click, harmless no-ops for now) can change what's on
+        // screen in the taskbar/menu column, so fold that in too.
+        // Union the BEFORE and AFTER footprints: closing shrinks the
+        // panel's rect, so using only the post-click (narrower) rect
+        // would leave stale menu pixels on screen unrepainted.
+        int tx1, ty1, tw1, th1;
+        taskbar_full_rect(fb_h, &tx1, &ty1, &tw1, &th1);
+
+        expand_rect(&dx1, &dy1, &dx2, &dy2, tx0, ty0, tw0, th0);
+        expand_rect(&dx1, &dy1, &dx2, &dy2, tx1, ty1, tw1, th1);
+        dirty = 1;
+        repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
+    }
+}
 
 		if (pressed && dragging_index == -1 && !taskbar_consumed) {
 			for (int i = g_window_count - 1; i >= 0; i--) {
