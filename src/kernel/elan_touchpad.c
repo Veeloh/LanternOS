@@ -94,17 +94,20 @@ int elan_init(void) {
 }
 
 void elan_poll(int dump_raw) {
-	// HID-over-I2C style access: reading straight from the device (no
-	// command byte written first) returns a 2-byte little-endian length
-	// prefix followed by that many bytes of report data. If nothing is
-	// ready, length reads back as 0.
+	// Read the WHOLE report (2-byte length header + fixed 34-byte body) as
+	// ONE continuous I2C transaction. Doing this as two separate reads
+	// (header, then body) was the bug behind the erratic jumps and
+	// eventual freeze-ups: each separate read ends its own transaction
+	// with a STOP, and between two back-to-back transactions the chip can
+	// re-latch a newer report mid-way through, tearing the data - or NACK
+	// the second one outright, which silently froze position updates with
+	// no recovery. One transaction start-to-finish avoids both.
 	uint8_t buf[ELAN_REPORT_MAX];
-	if (i2c_dw_read(&elan_bus, ELAN_ADDR7, buf, 2) != 0) return;
+	const int total_len = 2 + 34; // 2-byte length prefix + fixed 34-byte body
+	if (i2c_dw_read(&elan_bus, ELAN_ADDR7, buf, total_len) != 0) return;
 
 	int len = buf[0] | (buf[1] << 8);
 	if (len == 0 || len > ELAN_REPORT_MAX - 2) return; // nothing ready / bogus
-
-	if (i2c_dw_read(&elan_bus, ELAN_ADDR7, buf + 2, len) != 0) return;
 
 	if (dump_raw) {
 		vga_print("\nelan report: ");
