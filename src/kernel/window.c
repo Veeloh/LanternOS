@@ -1,6 +1,7 @@
 #include "window.h"
 #include "app.h"
 #include "taskbar.h"
+#include "menubar.h"
 #include "vga.h"
 #include "mouse.h"
 #include "cursor.h"
@@ -123,6 +124,15 @@ static void repaint_region(int rx, int ry, int rw, int rh) {
 		clock_get(&hh, &mm, &ss);
 		taskbar_draw(g_fb_h, g_battery_pct, g_charging, g_weekday, g_day, hh, mm, ss);
 	}
+
+	// menu bar sits above ordinary windows too, along the top edge
+	int mx, my, mw, mh;
+	menubar_full_rect(g_fb_w, &mx, &my, &mw, &mh);
+	if (rects_intersect(mx, my, mw, mh, rx, ry, rw, rh)) {
+		int top = window_top_index();
+		const char* app_name = (top != -1) ? windows[top].title : 0;
+		menubar_draw(g_fb_w, app_name);
+	}
 }
 
 static void expand_rect(int* x1, int* y1, int* x2, int* y2, int x, int y, int w, int h) {
@@ -199,6 +209,7 @@ void desktop() {
 		clock_get(&hh, &mm, &ss);
 		taskbar_draw(fb_h, g_battery_pct, g_charging, g_weekday, g_day, hh, mm, ss);
 	}
+	menubar_draw(fb_w, window_top_index() != -1 ? windows[window_top_index()].title : 0);
 	cursor_update();
 	vga_present(backbuffer);
 
@@ -311,11 +322,28 @@ void desktop() {
 			}
 		}
 
-		// a click that isn't on the taskbar/menu and isn't on a titlebar
+		int menubar_consumed = 0;
+		if (clicked && !taskbar_consumed) {
+			int mx0, my0, mw0, mh0;
+			menubar_full_rect(fb_w, &mx0, &my0, &mw0, &mh0);
+
+			menubar_consumed = menubar_handle_click(mx, my);
+
+			if (menubar_consumed) {
+				int mx1, my1, mw1, mh1;
+				menubar_full_rect(fb_w, &mx1, &my1, &mw1, &mh1);
+				expand_rect(&dx1, &dy1, &dx2, &dy2, mx0, my0, mw0, mh0);
+				expand_rect(&dx1, &dy1, &dx2, &dy2, mx1, my1, mw1, mh1);
+				dirty = 1;
+				repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
+			}
+		}
+
+		// a click that isn't on the taskbar/menu bar and isn't on a titlebar
 		// (handled by the drag hit-test just below) - if it lands inside a
 		// window's content area, focus that window and forward the click
 		// to its app. Front-to-back so an overlapping window on top wins.
-		if (clicked && !taskbar_consumed) {
+		if (clicked && !taskbar_consumed && !menubar_consumed) {
 			for (int i = g_window_count - 1; i >= 0; i--) {
 				int idx = z_order[i];
 				window_t* win = &windows[idx];
@@ -356,7 +384,7 @@ void desktop() {
 			}
 		}
 
-		if (pressed && dragging_index == -1 && !taskbar_consumed) {
+		if (pressed && dragging_index == -1 && !taskbar_consumed && !menubar_consumed) {
 			for (int i = g_window_count - 1; i >= 0; i--) {
 				window_t* win = &windows[z_order[i]];
 				if (point_in_titlebar(win, mx, my)) {
@@ -378,6 +406,7 @@ void desktop() {
 			int nx = mx - drag_dx;
 			int ny = my - drag_dy;
 			if (nx < TASKBAR_W) nx = TASKBAR_W; // keep windows clear of the taskbar
+			if (ny < MENUBAR_H) ny = MENUBAR_H; // keep windows clear of the menu bar
 			if (nx != win->x || ny != win->y) {
 				expand_rect(&dx1, &dy1, &dx2, &dy2, win->x, win->y, win->w, win->h);
 				win->x = nx;
