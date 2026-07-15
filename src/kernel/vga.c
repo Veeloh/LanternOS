@@ -1,5 +1,6 @@
 #include "vga.h"
 #include "font8x16.h"
+#include "cursor.h"
 
 #define FONT_W 8
 #define FONT_H 16
@@ -122,6 +123,15 @@ void vga_putchar(char c) {
 	if (cursor_y >= rows) {
 		vga_scroll();
 	}
+
+	// Text drawing (or a scroll, which moves the whole framebuffer) can
+	// paint over wherever the mouse cursor sprite currently sits. Without
+	// this, cursor_update() has no way to know its saved-background
+	// snapshot is now stale, so it never redraws - the cursor just
+	// silently vanishes until the pointer moves to a new position. This
+	// makes every text draw tell it "your snapshot is stale, redraw clean
+	// next time" instead.
+	cursor_invalidate();
 }
 
 void vga_print(const char* str) {
