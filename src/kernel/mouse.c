@@ -48,12 +48,23 @@ static int screen_h = 200;
 
 static int left_btn = 0;
 static int right_btn = 0;
-static int middle_btn = 0;
+static int middle_btn = // ... keep your existing macros, inb, outb, and wait functions ...
 
 void mouse_handler() {
+	// CRITICAL: Check status register first
+	uint8_t status = inb(PS2_STATUS);
+	
+	// Bit 0 must be 1 (data available) and Bit 5 must be 1 (it belongs to the mouse)
+	if (!(status & 0x01) || !(status & 0x20)) {
+		outb(0xA0, 0x20);
+		outb(0x20, 0x20);
+		return;
+	}
+
 	uint8_t data = inb(PS2_DATA);
 
 	if (packet_index == 0 && !(data & 0x08)) {
+		// Out of sync packet, discard safely
 		outb(0xA0, 0x20);
 		outb(0x20, 0x20);
 		return;
@@ -92,7 +103,9 @@ void mouse_handler() {
 extern void mouse_isr();
 
 void mouse_init() {
+	// 1. Drain the controller buffers completely
 	while (inb(PS2_STATUS) & 0x01) inb(PS2_DATA);
+	
 	screen_w = (int)vga_get_fb_width();
 	screen_h = (int)vga_get_fb_height();
 	if (screen_w <= 0) screen_w = 320;
@@ -101,34 +114,55 @@ void mouse_init() {
 	mouse_x = screen_w / 2;
 	mouse_y = screen_h / 2;
 
+	// 2. Enable auxiliary mouse port
 	ps2_wait_write();
 	outb(PS2_CMD, 0xA8);
 
+	// 3. Read current controller configuration
 	ps2_wait_write();
 	outb(PS2_CMD, 0x20);
 	ps2_wait_read();
 	uint8_t config = inb(PS2_DATA);
 
+	// Enable IRQ 12 (bit 1) and enable mouse clock line (clear bit 5)
 	config |= 0x02;
 	config &= ~0x20;
 
+	// Write updated configuration back
 	ps2_wait_write();
 	outb(PS2_CMD, 0x60);
 	ps2_wait_write();
 	outb(PS2_DATA, config);
 
+	// 4. CRITICAL FOR REAL HARDWARE: Reset the mouse device
+	mouse_write(0xFF);
+	mouse_read(); // Expect ACK (0xFA)
+	mouse_read(); // Expect Self-Test Pass (0xAA)
+	mouse_read(); // Optional: Some mice send a device ID (0x00) here, drain if present
+
+	// 5. Tell mouse to use defaults and start reporting
 	mouse_write(0xF6);
-	mouse_read();
+	mouse_read(); // Expect ACK
 
 	mouse_write(0xF4);
-	mouse_read();
+	mouse_read(); // Expect ACK
 
+	// 6. Setup Interrupt Vector
 	idt_set_handler(44, (uint32_t)mouse_isr);
 
-	uint8_t mask = inb(0xA1);
-	mask &= ~0x10;
-	outb(0xA1, mask);
+	// 7. CRITICAL: Unmask Master PIC Cascade Line (IRQ 2)
+	uint8_t master_mask = inb(0x21);
+	master_mask &= ~0x04; // Clear bit 2 to enable slave PIC chain
+	outb(0x21, master_mask);
+
+	// 8. Unmask Slave PIC Line (IRQ 12)
+	uint8_t slave_mask = inb(0xA1);
+	slave_mask &= ~0x10; // Clear bit 4 (IRQ 12)
+	outb(0xA1, slave_mask);
 }
+
+
+
 
 int mouse_get_x() {
 	return mouse_x;
