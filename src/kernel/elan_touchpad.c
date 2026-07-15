@@ -114,6 +114,11 @@ void elan_poll(int dump_raw) {
 	if (i2c_dw_read(&elan_bus, ELAN_ADDR7, buf, sizeof(buf)) != 0)
 		return;
 
+	if (dump_raw) {
+		vga_print("\nelan report: ");
+		for (int i = 0; i < (int)sizeof(buf) && i < 16; i++) { print_hex8(buf[i]); vga_print(" "); }
+	}
+
 	int len = buf[0] | (buf[1] << 8);
 	if (len != ETP_I2C_REPORT_LEN) return; // idle bus (0xFFFF) or a
 	                                        // different report type/length
@@ -122,11 +127,6 @@ void elan_poll(int dump_raw) {
 	                                        // it rather than misparse it.
 
 	uint8_t* body = buf + 2;
-
-	if (dump_raw) {
-		vga_print("\nelan report: ");
-		for (int i = 0; i < (int)sizeof(buf) && i < 16; i++) { print_hex8(buf[i]); vga_print(" "); }
-	}
 
 	// --- Parse: NOT actually confirmed, and probably wrong. ---
 	// A real capture with a finger held down shows body[0] changing on
