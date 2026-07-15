@@ -13,11 +13,17 @@
 #define ETP_I2C_DESC_CMD    0x0001 // read HID descriptor (30 bytes)
 #define ETP_I2C_SET_CMD     0x0300 // set mode: 3rd byte = mode value
 #define ETP_ENABLE_ABS      0x0001 // absolute-mode value for SET_CMD
-#define ETP_I2C_REPORT_LEN  34     // fixed body length, confirmed against
-                                   // torvalds/linux drivers/input/mouse/elan_i2c_i2c.c:
-                                   // get_report() is a PLAIN i2c_master_recv() of
-                                   // exactly report_len bytes - no command word sent
-                                   // first, and no length prefix on the response.
+#define ETP_I2C_REPORT_LEN  34     // body length. CONFIRMED against a real
+                                   // capture: touch reports start with two
+                                   // bytes that read as little-endian 0x0022
+                                   // = 34 decimal - i.e. this device DOES send
+                                   // a 2-byte length prefix in front of the
+                                   // body (unlike the generic Linux elan_i2c
+                                   // i2c_master_recv() path, which doesn't).
+                                   // A prior pass here removed this prefix
+                                   // based on the Linux driver read path and
+                                   // that was wrong for this specific device -
+                                   // put back based on real captured bytes.
 
 #define ELAN_ADDR7          0x15
 #define ELAN_DESC_LEN       30
@@ -99,33 +105,39 @@ int elan_init(void) {
 }
 
 void elan_poll(int dump_raw) {
-	// Confirmed against torvalds/linux drivers/input/mouse/elan_i2c_i2c.c:
-	// elan_i2c_get_report() is a PLAIN i2c_master_recv() of exactly
-	// report_len (34) bytes - no command word sent first, no length
-	// prefix on the response. Two earlier versions of this function got
-	// this wrong in opposite directions: the original treated the first
-	// 2 bytes as a length header that doesn't exist (silently discarding
-	// every report and leaving raw_x/raw_y stuck at 0,0); the next one
-	// "fixed" that by sending a report-request command word first - but
-	// that command word was accidentally set to the same value as
-	// ETP_I2C_RESET, so every poll was quietly re-resetting the device
-	// instead of reading it, which is why the dump looked identical on
-	// every single line regardless of touch.
-	uint8_t body[ETP_I2C_REPORT_LEN];
-	if (i2c_dw_read(&elan_bus, ELAN_ADDR7, body, ETP_I2C_REPORT_LEN) != 0)
+	// CONFIRMED against a real hardware capture: reports start with a
+	// 2-byte little-endian length field (observed value 0x0022 = 34,
+	// matching the body length below), THEN the body - read as one
+	// continuous transaction so a re-latch can't tear the data across
+	// two separate I2C transfers.
+	uint8_t buf[2 + ETP_I2C_REPORT_LEN];
+	if (i2c_dw_read(&elan_bus, ELAN_ADDR7, buf, sizeof(buf)) != 0)
 		return;
+
+	int len = buf[0] | (buf[1] << 8);
+	if (len != ETP_I2C_REPORT_LEN) return; // idle bus (0xFFFF) or a
+	                                        // different report type/length
+	                                        // (e.g. the 0x0040-length block
+	                                        // also seen in captures) - skip
+	                                        // it rather than misparse it.
+
+	uint8_t* body = buf + 2;
 
 	if (dump_raw) {
 		vga_print("\nelan report: ");
-		for (int i = 0; i < ETP_I2C_REPORT_LEN && i < 16; i++) { print_hex8(body[i]); vga_print(" "); }
+		for (int i = 0; i < (int)sizeof(buf) && i < 16; i++) { print_hex8(buf[i]); vga_print(" "); }
 	}
 
-	// --- Parse confirmed against real captured hardware output. ---
-	// body[0] = status byte: bit3 = finger 1 present, bit4 = finger 2
-	// present, bit5 = finger 3 present; bits0-2 = button state.
-	// Each present finger is a 5-byte packet immediately following (in
-	// finger-slot order): byte0 = (x_hi<<4)|y_hi (top nibbles of 12-bit
-	// X/Y), byte1 = x_low, byte2 = y_low, byte3 = pressure, byte4 = width.
+	// --- Parse: NOT actually confirmed, and probably wrong. ---
+	// A real capture with a finger held down shows body[0] changing on
+	// almost every single sample (0x5D, 0xB1, 0x64, 0xB1, 0x81, 0x74...)
+	// during what should be one continuous touch - that's not how a
+	// status/finger-presence byte behaves (it should hold steady while a
+	// finger stays down). body[3] sits at 0x33 almost every sample
+	// instead, which is a much better candidate for status/finger-count.
+	// The offsets below are the OLD guess, kept only so the code still
+	// compiles/runs - do not trust the resulting x/y or button state
+	// until this is re-derived from a controlled capture (see below).
 	uint8_t status = body[0];
 
 	int finger1_present = status & 0x08;
