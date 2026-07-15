@@ -326,10 +326,18 @@ void desktop() {
 		if (clicked && !taskbar_consumed) {
 			int mx0, my0, mw0, mh0;
 			menubar_full_rect(fb_w, &mx0, &my0, &mw0, &mh0);
+			int menu_open_before = menubar_is_open();
 
 			menubar_consumed = menubar_handle_click(mx, my);
 
-			if (menubar_consumed) {
+			// menubar_handle_click's click-away logic can close an open
+			// dropdown even on a click it doesn't "consume" (e.g. a click
+			// on a window titlebar to start a drag) - repaint whenever the
+			// open/closed state changed, not only when consumed, or the
+			// dropdown's pixels are left stale until something else paints
+			// over them (looks like it "disappears" mid-drag instead of
+			// closing right away).
+			if (menubar_consumed || menu_open_before != menubar_is_open()) {
 				int mx1, my1, mw1, mh1;
 				menubar_full_rect(fb_w, &mx1, &my1, &mw1, &mh1);
 				expand_rect(&dx1, &dy1, &dx2, &dy2, mx0, my0, mw0, mh0);
