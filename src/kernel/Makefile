@@ -117,7 +117,7 @@ $(BUILD_DIR)/kernel.elf: $(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel_main.o 
 		$(BUILD_DIR)/kernel_entry.o $(BUILD_DIR)/kernel_main.o $(BUILD_DIR)/kernel_vga.o  \
 		$(BUILD_DIR)/kernel_idt.o $(BUILD_DIR)/kernel_pic.o $(BUILD_DIR)/kernel_idt_asm.o $(BUILD_DIR)/kernel_keyboard.o $(BUILD_DIR)/kernel_shell.o $(BUILD_DIR)/kernel_timer.o $(BUILD_DIR)/shell_clock.o $(BUILD_DIR)/kernel_gdt.o $(BUILD_DIR)/kernel_gdt_asm.o $(BUILD_DIR)/kernel_pmm.o  $(BUILD_DIR)/kernel_heap.o $(BUILD_DIR)/kernel_scheduler.o  $(BUILD_DIR)/kernel_fat.o\
 		$(BUILD_DIR)/kernel_process.o $(BUILD_DIR)/kernel_syscall.o $(BUILD_DIR)/kernel_elf.o $(BUILD_DIR)/kernel_pci.o $(BUILD_DIR)/kernel_disk.o  $(BUILD_DIR)/kernel_ahci.o $(BUILD_DIR)/kernel_nvme.o  $(BUILD_DIR)/kernel_emmc.o \
-		$(BUILD_DIR)/kernel_acpi.o $(BUILD_DIR)/kernel_gpt.o $(BUILD_DIR)/kernel_mouse.o $(BUILD_DIR)/kernel_cursor.o $(BUILD_DIR)/kernel_window.o $(BUILD_DIR)/kernel_taskbar.o $(BUILD_DIR)/kernel_app.o $(BUILD_DIR)/kernel_menubar.o\	
+		$(BUILD_DIR)/kernel_acpi.o $(BUILD_DIR)/kernel_gpt.o $(BUILD_DIR)/kernel_mouse.o $(BUILD_DIR)/kernel_cursor.o $(BUILD_DIR)/kernel_window.o $(BUILD_DIR)/kernel_taskbar.o $(BUILD_DIR)/kernel_app.o $(BUILD_DIR)/kernel_menubar.o \
 		-o $(BUILD_DIR)/kernel.elf
 
 clean:
