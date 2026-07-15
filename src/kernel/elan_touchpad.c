@@ -29,14 +29,14 @@
 #define ELAN_DESC_LEN       30
 #define ELAN_REPORT_MAX     40  // generous upper bound on report length
 
-// GUESS - this pad's physical raw-unit range. 12-bit fields max out at
-// 4095, but real touchpads rarely use the full range. From your capture,
-// observed X spanned roughly 300-1700 and Y roughly 450-2300 across a
-// modest drag, so the true corner-to-corner range is likely somewhat
-// wider than that. Tune these against your own min/max if the cursor
-// clips before reaching screen edges, or never reaches them.
-#define ELAN_MAX_X 3000
-#define ELAN_MAX_Y 2000
+// UPDATED from a real controlled capture: raw_x/raw_y are single BYTES
+// (0-255), not 12-bit values - the drag-right/drag-down test showed X
+// spanning roughly 5-181 and Y roughly 45-85, but that was a single
+// partial drag, not a full corner-to-corner sweep, so the true max is
+// probably higher on both axes. 255 is a safe upper bound to start from;
+// tune down if the cursor never quite reaches the screen edges.
+#define ELAN_MAX_X 255
+#define ELAN_MAX_Y 255
 
 static i2c_dw_t elan_bus;
 
@@ -128,46 +128,41 @@ void elan_poll(int dump_raw) {
 
 	uint8_t* body = buf + 2;
 
-	// --- Parse: NOT actually confirmed, and probably wrong. ---
-	// A real capture with a finger held down shows body[0] changing on
-	// almost every single sample (0x5D, 0xB1, 0x64, 0xB1, 0x81, 0x74...)
-	// during what should be one continuous touch - that's not how a
-	// status/finger-presence byte behaves (it should hold steady while a
-	// finger stays down). body[3] sits at 0x33 almost every sample
-	// instead, which is a much better candidate for status/finger-count.
-	// The offsets below are the OLD guess, kept only so the code still
-	// compiles/runs - do not trust the resulting x/y or button state
-	// until this is re-derived from a controlled capture (see below).
+	// --- Parse: derived from a controlled hold/drag-right/drag-down
+	// capture, replacing the earlier 12-bit nibble-split guess (which
+	// doesn't match this hardware - this chip reports plain single-byte
+	// X/Y instead). body[0] held constant through the whole capture
+	// (one continuous touch, no click), body[2] climbed cleanly 0x05->0xB5
+	// during the rightward drag, body[3] climbed cleanly 0x2D->0x55 during
+	// the downward drag.
 	uint8_t status = body[0];
 
-	int finger1_present = status & 0x08;
-	int finger2_present = status & 0x10;
-	int finger3_present = status & 0x20;
-	int physical_click  = status & 0x01;
+	// NOTE: body[0] was constant (0x5D) through an un-clicked drag, so we
+	// can't yet trust which bit (if any) means "physical click" or "second
+	// finger" - the old bit positions were guessed against a DIFFERENT
+	// (misaligned) capture and are not re-verified here. Treating any
+	// length-34 report as "finger present" and leaving click detection at
+	// 0 until we capture a dedicated click-vs-no-click sample to diff.
+	int finger1_present = 1; // we only get here at all on a valid report
+	int physical_click  = 0; // unverified - see note above
+	(void)status;
 
 	// This is a clickpad: one mechanical switch under the whole surface,
-	// not separate left/right buttons. Confirmed against a real capture -
-	// status 0x19 (bit0 click + finger1 + finger2) showed up consistently
-	// during an actual two-finger click. So left vs. right isn't read from
-	// the hardware at all; it's synthesized from how many fingers were
-	// down at the moment of the click, same convention Windows/Linux
-	// touchpad drivers use: 1 (or 0) fingers = left, 2+ fingers = right.
-	int finger_count = (finger1_present ? 1 : 0) + (finger2_present ? 1 : 0) + (finger3_present ? 1 : 0);
-
+	// not separate left/right buttons. Finger-count-based left/right
+	// synthesis (Windows/Linux convention: 1 finger = left, 2+ = right)
+	// is disabled until we re-verify the finger-count bits against real
+	// captures - for now, clicks always register as left-click.
 	if (physical_click) {
-		if (finger_count >= 2) { btn_left = 0; btn_right = 1; }
-		else                   { btn_left = 1; btn_right = 0; }
+		btn_left = 1;
+		btn_right = 0;
 	} else {
 		btn_left = 0;
 		btn_right = 0;
 	}
 
 	if (finger1_present) {
-		uint8_t* f = body + 1;
-		int x_hi = (f[0] >> 4) & 0xF;
-		int y_hi = f[0] & 0xF;
-		raw_x = (x_hi << 8) | f[1];
-		raw_y = (y_hi << 8) | f[2];
+		raw_x = body[2];
+		raw_y = body[3];
 	}
 
 	// Two-finger data (finger2_present) is scroll/gesture input on this
