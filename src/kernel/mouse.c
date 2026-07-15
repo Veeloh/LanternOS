@@ -1,46 +1,56 @@
 #include "mouse.h"
+#include "pci.h"
 #include "idt.h"
 #include "vga.h"
 
-#define PS2_DATA 0x60
+// --- ACPI Table Definitions (Directly matches your acpi.c structures) ---
+typedef struct {
+    char     signature[8];
+    uint8_t  checksum;
+    char     oem_id[6];
+    uint8_t  revision;
+    uint32_t rsdt_address;
+} __attribute__((packed)) mouse_acpi_rsdp_t;
+
+typedef struct {
+    char     signature[4];
+    uint32_t length;
+    uint8_t  revision;
+    uint8_t  checksum;
+    char     oem_id[6];
+    char     oem_table_id[8];
+    uint32_t oem_revision;
+    uint32_t creator_id;
+    uint32_t creator_revision;
+} __attribute__((packed)) mouse_acpi_sdt_t;
+
+typedef struct {
+    mouse_acpi_sdt_t header;
+    uint32_t         other_sdt[];
+} __attribute__((packed)) mouse_acpi_rsdt_t;
+
+typedef struct {
+    mouse_acpi_sdt_t header;
+    uint32_t firmware_ctrl;
+    uint32_t dsdt;
+} __attribute__((packed)) mouse_acpi_fadt_t;
+
+// --- Legacy Port I/O Registers ---
+#define PS2_DATA   0x60
 #define PS2_STATUS 0x64
-#define PS2_CMD 0x64
+#define PS2_CMD    0x64
 
-static uint8_t inb(uint16_t port) {
-	uint8_t value;
-	__asm__ volatile ("inb %1, %0" : "=a"(value) : "dN"(port));
-	return value;
-}
+// --- Synaptics / DesignWare I2C MMIO Register Maps ---
+#define DW_IC_CON          0x00  // Control Register
+#define DW_IC_TAR          0x04  // Target Address Register
+#define DW_IC_DATA_CMD     0x10  // Data Buffer and Command
+#define DW_IC_STATUS       0x70  // Controller Status Register
 
-static void outb(uint16_t port, uint8_t value) {
-	__asm__ volatile ("outb %0, %1" :: "a"(value), "Nd"(port));
-}
+#define IC_STATUS_TFNF     (1u << 1) // Transmit FIFO Not Full
+#define IC_STATUS_RFNE     (1u << 3) // Receive FIFO Not Empty
+#define IC_DATA_CMD_READ   (1u << 8) // Command bit to trigger a read cycle
 
-static void ps2_wait_write() {
-	int timeout = 100000;
-	while (timeout-- && (inb(PS2_STATUS) & 0x02));
-}
-
-static void ps2_wait_read() {
-	int timeout = 100000;
-	while (timeout-- && !(inb(PS2_STATUS) & 0x01));
-}
-
-static void mouse_write(uint8_t value) {
-	ps2_wait_write();
-	outb(PS2_CMD, 0xD4);
-	ps2_wait_write();
-	outb(PS2_DATA, value);
-}
-
-static uint8_t mouse_read() {
-	ps2_wait_read();
-	return inb(PS2_DATA);
-}
-
-static uint8_t packet[3];
-static int packet_index = 0;
-
+// --- Driver Core States ---
 static int mouse_x = 0;
 static int mouse_y = 0;
 static int screen_w = 320;
@@ -50,136 +60,246 @@ static int left_btn = 0;
 static int right_btn = 0;
 static int middle_btn = 0;
 
+static uint8_t packet[3];
+static int packet_index = 0;
+
+// Trackpad Hardware Properties
+static int is_modern_trackpad = 0;
+static uint32_t i2c_mmio_base = 0;      // Base memory address of the PCI I2C Controller
+static uint16_t trackpad_slave_addr = 0x2C; // Standard Synaptics default I2C address
+
+// --- Core Helper Subroutines ---
+static uint8_t inb(uint16_t port) {
+    uint8_t value;
+    __asm__ volatile ("inb %1, %0" : "=a"(value) : "dN"(port));
+    return value;
+}
+
+static void outb(uint16_t port, uint8_t value) {
+    __asm__ volatile ("outb %0, %1" :: "a"(value), "Nd"(port));
+}
+
+static void ps2_wait_write() {
+    int timeout = 100000;
+    while (timeout-- && (inb(PS2_STATUS) & 0x02));
+}
+
+static void ps2_wait_read() {
+    int timeout = 100000;
+    while (timeout-- && !(inb(PS2_STATUS) & 0x01));
+}
+
+// --- MMIO I2C Low-Level Hardware Drivers ---
+static inline uint32_t mmio_read(uint32_t reg) {
+    return *(volatile uint32_t*)(i2c_mmio_base + reg);
+}
+
+static inline void mmio_write(uint32_t reg, uint32_t val) {
+    *(volatile uint32_t*)(i2c_mmio_base + reg) = val;
+}
+
+static void i2c_write_reg16(uint16_t slave_addr, uint16_t reg, uint16_t value) {
+    if (!i2c_mmio_base) return;
+    
+    // Point the I2C host controller to our trackpad slave address
+    mmio_write(DW_IC_TAR, slave_addr);
+
+    // Wait for the transmission buffer to clear
+    while (!(mmio_read(DW_IC_STATUS) & IC_STATUS_TFNF));
+    mmio_write(DW_IC_DATA_CMD, (reg >> 8) & 0xFF);         // Register Address High Byte
+    
+    while (!(mmio_read(DW_IC_STATUS) & IC_STATUS_TFNF));
+    mmio_write(DW_IC_DATA_CMD, reg & 0xFF);                // Register Address Low Byte
+    
+    while (!(mmio_read(DW_IC_STATUS) & IC_STATUS_TFNF));
+    mmio_write(DW_IC_DATA_CMD, value & 0xFF);              // Command Configuration Byte
+}
+
+static void i2c_read_bytes(uint16_t slave_addr, uint16_t reg, uint8_t* buffer, uint32_t length) {
+    if (!i2c_mmio_base) return;
+
+    mmio_write(DW_IC_TAR, slave_addr);
+
+    // Send the address bytes we want to read from
+    while (!(mmio_read(DW_IC_STATUS) & IC_STATUS_TFNF));
+    mmio_write(DW_IC_DATA_CMD, (reg >> 8) & 0xFF);
+    while (!(mmio_read(DW_IC_STATUS) & IC_STATUS_TFNF));
+    mmio_write(DW_IC_DATA_CMD, reg & 0xFF);
+
+    // Request data stream loops
+    for (uint32_t i = 0; i < length; i++) {
+        while (!(mmio_read(DW_IC_STATUS) & IC_STATUS_TFNF));
+        mmio_write(DW_IC_DATA_CMD, DW_IC_DATA_CMD_READ); // Fire I2C clock pulses
+
+        while (!(mmio_read(DW_IC_STATUS) & IC_STATUS_RFNE)); // Wait for data returned
+        buffer[i] = mmio_read(DW_IC_STATUS) & 0xFF;
+    }
+}
+
+// --- Modern Trackpad Absolute Interrupt Handler ---
+void trackpad_gpio_interrupt_handler() {
+    uint8_t input_report[32] = {0};
+    i2c_read_bytes(trackpad_slave_addr, 0x0000, input_report, sizeof(input_report));
+
+    uint16_t packet_len = input_report[0] | (input_report[1] << 8);
+    if (packet_len == 0 || packet_len > sizeof(input_report)) return;
+
+    left_btn = input_report[2] & 0x01; // Tip switch contact flag
+
+    // Modern trackpads broadcast absolute coordinates
+    uint32_t raw_x = input_report[4] | (input_report[5] << 8);
+    uint32_t raw_y = input_report[6] | (input_report[7] << 8);
+
+    if (raw_x > 0 && raw_y > 0) {
+        mouse_x = (int)((raw_x * screen_w) / 4096);
+        mouse_y = (int)((raw_y * screen_h) / 4096);
+
+        if (mouse_x >= screen_w) mouse_x = screen_w - 1;
+        if (mouse_y >= screen_h) mouse_y = screen_h - 1;
+    }
+}
+
+// --- Legacy PS/2 Mouse Driver ISR ---
 void mouse_handler() {
-	// CRITICAL: Check status register first
-	uint8_t status = inb(PS2_STATUS);
-	
-	// Bit 0 must be 1 (data available) and Bit 5 must be 1 (it belongs to the mouse)
-	if (!(status & 0x01) || !(status & 0x20)) {
-		outb(0xA0, 0x20);
-		outb(0x20, 0x20);
-		return;
-	}
+    uint8_t status = inb(PS2_STATUS);
+    if (!(status & 0x01) || !(status & 0x20)) {
+        outb(0xA0, 0x20); outb(0x20, 0x20);
+        return;
+    }
 
-	uint8_t data = inb(PS2_DATA);
+    uint8_t data = inb(PS2_DATA);
+    if (packet_index == 0 && !(data & 0x08)) {
+        outb(0xA0, 0x20); outb(0x20, 0x20);
+        return;
+    }
 
-	if (packet_index == 0 && !(data & 0x08)) {
-		// Out of sync packet, discard safely
-		outb(0xA0, 0x20);
-		outb(0x20, 0x20);
-		return;
-	}
+    packet[packet_index++] = data;
 
-	packet[packet_index++] = data;
+    if (packet_index == 3) {
+        packet_index = 0;
+        left_btn   = packet[0] & 0x01;
+        right_btn  = packet[0] & 0x02;
+        middle_btn = packet[0] & 0x04;
 
-	if (packet_index == 3) {
-		packet_index = 0;
+        if (!(packet[0] & 0xC0)) {
+            int dx = packet[1];
+            int dy = packet[2];
 
-		left_btn = packet[0] & 0x01;
-		right_btn = packet[0] & 0x02;
-		middle_btn = packet[0] & 0x04;
+            if (packet[0] & 0x10) dx -= 256;
+            if (packet[0] & 0x20) dy -= 256;
 
-		if (!(packet[0] & 0xC0)) {
-			int dx = packet[1];
-			int dy = packet[2];
+            mouse_x += dx;
+            mouse_y -= dy;
 
-			if (packet[0] & 0x10) dx -= 256;
-			if (packet[0] & 0x20) dy -= 256;
+            if (mouse_x < 0) mouse_x = 0;
+            if (mouse_y < 0) mouse_y = 0;
+            if (mouse_x >= screen_w) mouse_x = screen_w - 1;
+            if (mouse_y >= screen_h) mouse_y = screen_h - 1;
+        }
+    }
+    outb(0xA0, 0x20); outb(0x20, 0x20);
+}
 
-			mouse_x += dx;
-			mouse_y -= dy;
+// --- ACPI Scanner Implementation ---
+static int check_acpi_trackpad() {
+    uint16_t ebda_seg = *(volatile uint16_t*)0x40E;
+    uint32_t ebda_addr = (uint32_t)ebda_seg << 4;
+    uint32_t ranges[2] = { ebda_addr, 0xE0000 };
+    uint32_t ends[2]   = { ebda_addr + 1024, 0x100000 };
 
-			if (mouse_x < 0) mouse_x = 0;
-			if (mouse_y < 0) mouse_y = 0;
-			if (mouse_x >= screen_w) mouse_x = screen_w - 1;
-			if (mouse_y >= screen_h) mouse_y = screen_h - 1;
-		}
-	}
+    mouse_acpi_rsdp_t* rsdp = 0;
+    for (int r = 0; r < 2; r++) {
+        if (ranges[r] == 0) continue;
+        for (uint32_t addr = ranges[r]; addr < ends[r]; addr += 16) {
+            uint8_t* sig = (uint8_t*)addr;
+            if (sig[0] == 'R' && sig[1] == 'S' && sig[2] == 'D' && sig[3] == ' ' && 
+                sig[4] == 'P' && sig[5] == 'T' && sig[6] == 'R' && sig[7] == ' ') {
+                rsdp = (mouse_acpi_rsdp_t*)addr;
+                break;
+            }
+        }
+        if (rsdp) break;
+    }
+    if (!rsdp) return 0;
 
-	outb(0xA0, 0x20);
-	outb(0x20, 0x20);
+    mouse_acpi_rsdt_t* rsdt = (mouse_acpi_rsdt_t*)rsdp->rsdt_address;
+    mouse_acpi_fadt_t* fadt = 0;
+    int count = (rsdt->header.length - sizeof(mouse_acpi_sdt_t)) / 4;
+    for (int i = 0; i < count; i++) {
+        mouse_acpi_sdt_t* hdr = (mouse_acpi_sdt_t*)rsdt->other_sdt[i];
+        if (hdr->signature[0] == 'F' && hdr->signature[1] == 'A' && 
+            hdr->signature[2] == 'C' && hdr->signature[3] == 'P') {
+            fadt = (mouse_acpi_fadt_t*)hdr;
+            break;
+        }
+    }
+    if (!fadt) return 0;
+
+    mouse_acpi_sdt_t* dsdt = (mouse_acpi_sdt_t*)fadt->dsdt;
+    uint8_t* p = (uint8_t*)dsdt + sizeof(mouse_acpi_sdt_t);
+    uint8_t* end = (uint8_t*)dsdt + dsdt->length - 8;
+
+    for (; p < end; p++) {
+        if (p[0] == 'P' && p[1] == 'N' && p[2] == 'P' && p[3] == '0' && 
+            p[4] == 'C' && p[5] == '5' && p[6] == '0') return 1;
+        if (p[0] == 'S' && p[1] == 'Y' && p[2] == 'N' && p[3] == 'A') return 1;
+    }
+    return 0;
 }
 
 extern void mouse_isr();
 
 void mouse_init() {
-	// 1. Drain the controller buffers completely
-	while (inb(PS2_STATUS) & 0x01) inb(PS2_DATA);
-	
-	screen_w = (int)vga_get_fb_width();
-	screen_h = (int)vga_get_fb_height();
-	if (screen_w <= 0) screen_w = 320;
-	if (screen_h <= 0) screen_h = 200;
+    screen_w = (int)vga_get_fb_width();
+    screen_h = (int)vga_get_fb_height();
+    if (screen_w <= 0) screen_w = 320;
+    if (screen_h <= 0) screen_h = 200;
+    mouse_x = screen_w / 2;
+    mouse_y = screen_h / 2;
 
-	mouse_x = screen_w / 2;
-	mouse_y = screen_h / 2;
+    // 1. Scan ACPI and find trackpad profile configuration
+    if (check_acpi_trackpad()) {
+        pci_device_t pci_list[32];
+        int dev_count = pci_scan(pci_list, 32);
+        
+        // Find the DesignWare I2C host controller on the PCI bus
+        pci_device_t* i2c_dev = pci_find(pci_list, dev_count, 0x11, 0x00); // Signal processing class
+        if (!i2c_dev) {
+            i2c_dev = pci_find(pci_list, dev_count, 0x0C, 0x80);        // Serial Bus class alternative
+        }
 
-	// 2. Enable auxiliary mouse port
-	ps2_wait_write();
-	outb(PS2_CMD, 0xA8);
+        if (i2c_dev) {
+            // Mask out memory routing flags to extract the clean physical base address from BAR0
+            i2c_mmio_base = i2c_dev->bar[0] & 0xFFFFFFF0;
+            vga_print("\nmouse: linked to I2C host controller");
 
-	// 3. Read current controller configuration
-	ps2_wait_write();
-	outb(PS2_CMD, 0x20);
-	ps2_wait_read();
-	uint8_t config = inb(PS2_DATA);
+            // Complete standard I2C connection configuration handshakes
+            i2c_write_reg16(trackpad_slave_addr, 0x0024, 0x0000); // Change state register to Power-On
+            i2c_write_reg16(trackpad_slave_addr, 0x0026, 0x0001); // Execute Hardware Device Reset
 
-	// Enable IRQ 12 (bit 1) and enable mouse clock line (clear bit 5)
-	config |= 0x02;
-	config &= ~0x20;
+            is_modern_trackpad = 1;
+            return; // Initialization successful, escape legacy pipeline
+        }
+    }
 
-	// Write updated configuration back
-	ps2_wait_write();
-	outb(PS2_CMD, 0x60);
-	ps2_wait_write();
-	outb(PS2_DATA, config);
+    // --- LEGACY DESKTOP FALLBACK: Run traditional PS/2 steps ---
+    while (inb(PS2_STATUS) & 0x01) inb(PS2_DATA);
 
-	// 4. CRITICAL FOR REAL HARDWARE: Reset the mouse device
-	mouse_write(0xFF);
-	mouse_read(); // Expect ACK (0xFA)
-	mouse_read(); // Expect Self-Test Pass (0xAA)
-	mouse_read(); // Optional: Some mice send a device ID (0x00) here, drain if present
+    ps2_wait_write();
+    outb(PS2_CMD, 0xA8);
 
-	// 5. Tell mouse to use defaults and start reporting
-	mouse_write(0xF6);
-	mouse_read(); // Expect ACK
+    ps2_wait_write();
+    outb(PS2_CMD, 0x20);
+    ps2_wait_read();
+    uint8_t config = inb(PS2_DATA);
 
-	mouse_write(0xF4);
-	mouse_read(); // Expect ACK
+    config |= 0x02;
+    config &= ~0x20;
 
-	// 6. Setup Interrupt Vector
-	idt_set_handler(44, (uint32_t)mouse_isr);
+    ps2_wait_write();
+    outb(PS2_CMD, 0x60);
+    ps2_wait_write();
+    outb(PS2_DATA, config);
 
-	// 7. CRITICAL: Unmask Master PIC Cascade Line (IRQ 2)
-	uint8_t master_mask = inb(0x21);
-	master_mask &= ~0x04; // Clear bit 2 to enable slave PIC chain
-	outb(0x21, master_mask);
-
-	// 8. Unmask Slave PIC Line (IRQ 12)
-	uint8_t slave_mask = inb(0xA1);
-	slave_mask &= ~0x10; // Clear bit 4 (IRQ 12)
-	outb(0xA1, slave_mask);
-}
-
-
-
-
-int mouse_get_x() {
-	return mouse_x;
-}
-
-int mouse_get_y() {
-	return mouse_y;
-}
-
-int mouse_left_pressed() {
-	return left_btn != 0;
-}
-
-int mouse_right_pressed() {
-	return right_btn != 0;
-}
-
-int mouse_middle_pressed() {
-	return middle_btn != 0;
-}
+    ps2_wait_write(); outb(PS2_CMD, 0xD4);
+    ps2_wait_write(); outb(PS2_DATA, 0xF6);ps2_wait_read(); inb(PS2_DATA);ps2_wait_write(); outb(PS2_CMD, 0xD4);ps2_wait_write(); outb(PS2_DATA, 0xF4);ps2_wait_read(); inb(PS2_DATA);idt_set_handler(44, (uint32_t)mouse_isr);uint8_t master_mask = inb(0x21);master_mask &= ~0x04;outb(0x21, master_mask);uint8_t slave_mask = inb(0xA1);slave_mask &= ~0x10;outb(0xA1, slave_mask);}// --- Coordinate Value Getters ---int mouse_get_x() { return mouse_x; }int mouse_get_y() { return mouse_y; }int mouse_left_pressed()   { return left_btn != 0; }int mouse_right_pressed()  { return right_btn != 0; }int mouse_middle_pressed() { return middle_btn != 0; }
