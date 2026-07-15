@@ -47,9 +47,23 @@ typedef struct {
     uint32_t size;
 } __attribute__((packed)) fat32_entry_t;
 
+// One entry from a structured (non-printing) directory listing - see
+// fat32_list_dir_entries() below. name is 8.3-formatted and NUL-terminated.
+typedef struct {
+	char name[13];   // up to "12345678.123" + NUL
+	uint32_t size;
+	uint8_t is_dir;
+} fat32_dirent_t;
+
 void fat32_init();
 int fat32_read_file(const char* name, uint8_t* buffer, uint32_t max_size);
 void fat32_list_dir();
+
+// Same directory walk as fat32_list_dir(), but fills `out` (up to
+// max_entries) instead of vga_print-ing to the text console, so GUI code
+// (the Files app) can actually use the result. Returns the number of
+// entries written.
+int fat32_list_dir_entries(fat32_dirent_t* out, int max_entries);
 int fat32_change_dir(const char* name);
 const char* fat32_get_cwd(void);
 int fat32_write_file(const char* name, const uint8_t* data, uint32_t size);
