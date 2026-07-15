@@ -1,4 +1,5 @@
 #include "window.h"
+#include "app.h"
 #include "taskbar.h"
 #include "vga.h"
 #include "mouse.h"
@@ -14,6 +15,9 @@
 #define WIN_BORDER_COLOUR 0x6E2C00
 #define WIN_TITLE_TEXT_COLOUR 0x4A2511
 
+// centred desktop watermark - same sun glyph as the taskbar's top-left icon
+// (taskbar.c's draw_sun), just scaled up. Kept here rather than shared with
+// taskbar.c since the taskbar's version is tied to its fixed ICON_SZ.
 #define DESKTOP_LOGO_SIZE    96
 #define DESKTOP_LOGO_COLOUR  WIN_TITLE_COLOUR
 
@@ -22,7 +26,8 @@ static int z_order[MAX_WINDOWS];
 static int g_window_count = 0;
 static int g_fb_w = 0, g_fb_h = 0;
 
-
+// --- placeholder desktop info (see taskbar.h) - no battery/RTC-calendar
+// driver exists yet, so these stay hardcoded until that hardware work happens ---
 static int g_battery_pct = 100;
 static int g_charging = 0;
 static const char* g_weekday = "TUE";
@@ -54,6 +59,12 @@ static void draw_window(window_t* win) {
 	vga_fill_rect(win->x, win->y + TITLE_H, win->w, win->h - TITLE_H, WIN_BODY_COLOUR);
 	vga_draw_rect(win->x, win->y, win->w, win->h, WIN_BORDER_COLOUR);
 	vga_draw_text(win->x + 6, win->y + 4, win->title, WIN_TITLE_TEXT_COLOUR, WIN_TITLE_COLOUR);
+
+	// app_type == APP_NONE (e.g. the startup "SolOS" window) has no
+	// vtable, so it just keeps the plain body fill above - everything
+	// else gets its content drawn on top of that fill.
+	const app_vtable_t* vt = app_get_vtable(win->app_type);
+	if (vt && vt->draw) vt->draw(win);
 }
 
 // bounding box of the desktop logo - shared by the draw call and the
@@ -145,17 +156,23 @@ static int find_window_by_title(const char* title) {
 }
 
 // spawns a new window clear of the taskbar strip; returns its raw index, or
-// -1 if there's no free slot. Newly spawned windows land on top.
-static int spawn_window(const char* title, int w, int h) {
+// -1 if there's no free slot. Newly spawned windows land on top. app_type
+// picks which app_vtable_t (app.h) the window's content is drawn/driven by;
+// pass APP_NONE for a plain frame with no content hooks.
+static int spawn_window(const char* title, int w, int h, app_type_t app_type) {
 	if (g_window_count >= MAX_WINDOWS) return -1;
 	int idx = g_window_count;
 	int x = TASKBAR_W + 24 + (idx * 18);
 	int y = 40 + (idx * 18);
 	if (x + w > g_fb_w) x = g_fb_w - w;
 	if (x < TASKBAR_W) x = TASKBAR_W;
-	windows[idx] = (window_t){ x, y, w, h, title };
+	windows[idx] = (window_t){ x, y, w, h, title, app_type, 0 };
 	z_order[g_window_count] = idx;
 	g_window_count++;
+
+	const app_vtable_t* vt = app_get_vtable(app_type);
+	if (vt && vt->on_open) vt->on_open(&windows[idx]);
+
 	return idx;
 }
 
@@ -174,7 +191,7 @@ void desktop() {
 	cursor_reset();
 
 	g_window_count = 0;
-	spawn_window("SolOS", 220, 130);
+	spawn_window("SolOS", 220, 130, APP_NONE);
 
 	for (int i = 0; i < g_window_count; i++) draw_window(&windows[z_order[i]]);
 	{
@@ -225,7 +242,31 @@ void desktop() {
 
 				case TB_OPEN_TERMINAL: {
 					int idx = find_window_by_title("Terminal");
-					if (idx == -1) idx = spawn_window("Terminal", 240, 150);
+					if (idx == -1) idx = spawn_window("Terminal", 240, 150, APP_TERMINAL);
+					if (idx != -1) {
+						bring_to_front(idx);
+						window_t* w = &windows[idx];
+						expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
+						dirty = 1;
+					}
+					break;
+				}
+
+				case TB_OPEN_FILES: {
+					int idx = find_window_by_title("Files");
+					if (idx == -1) idx = spawn_window("Files", 300, 200, APP_FILES);
+					if (idx != -1) {
+						bring_to_front(idx);
+						window_t* w = &windows[idx];
+						expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
+						dirty = 1;
+					}
+					break;
+				}
+
+				case TB_OPEN_SETTINGS: {
+					int idx = find_window_by_title("Settings");
+					if (idx == -1) idx = spawn_window("Settings", 260, 180, APP_SETTINGS);
 					if (idx != -1) {
 						bring_to_front(idx);
 						window_t* w = &windows[idx];
@@ -244,8 +285,6 @@ void desktop() {
 				}
 
 				case TB_RETURN_TO_SHELL:
-				case TB_OPEN_FILES:
-				case TB_OPEN_SETTINGS:
 				case TB_NONE:
 				default:
 					break;
@@ -256,9 +295,9 @@ void desktop() {
 			}
 
 			if (taskbar_consumed) {
-				// the start menu opening/closing (or a files/settings stub
-				// click, harmless no-ops for now) can change what's on
-				// screen in the taskbar/menu column, so fold that in too.
+				// the start menu opening/closing (or launching Files/Settings,
+				// which also closes it) can change what's on screen in the
+				// taskbar/menu column, so fold that in too.
 				// Union the BEFORE and AFTER footprints: closing shrinks the
 				// panel's rect, so using only the post-click (narrower) rect
 				// would leave stale menu pixels on screen unrepainted.
@@ -269,6 +308,51 @@ void desktop() {
 				expand_rect(&dx1, &dy1, &dx2, &dy2, tx1, ty1, tw1, th1);
 				dirty = 1;
 				repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
+			}
+		}
+
+		// a click that isn't on the taskbar/menu and isn't on a titlebar
+		// (handled by the drag hit-test just below) - if it lands inside a
+		// window's content area, focus that window and forward the click
+		// to its app. Front-to-back so an overlapping window on top wins.
+		if (clicked && !taskbar_consumed) {
+			for (int i = g_window_count - 1; i >= 0; i--) {
+				int idx = z_order[i];
+				window_t* win = &windows[idx];
+				int in_body = mx >= win->x && mx < win->x + win->w &&
+				              my >= win->y + TITLE_H && my < win->y + win->h;
+				if (!in_body) continue;
+
+				expand_rect(&dx1, &dy1, &dx2, &dy2, win->x, win->y, win->w, win->h);
+				bring_to_front(idx);
+
+				const app_vtable_t* vt = app_get_vtable(win->app_type);
+				if (vt && vt->on_click) vt->on_click(win, mx - win->x, my - (win->y + TITLE_H));
+
+				dirty = 1;
+				repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
+				break;
+			}
+		}
+
+		// keyboard input always goes to whichever window is frontmost -
+		// there's no separate "focus" concept yet, z-order doubles as it
+		// (every path that brings a window to front - dragging it, clicking
+		// its body, selecting it from the taskbar - also makes it the
+		// keyboard target, which matches how a single-user desktop expects
+		// "the window I just touched" to behave).
+		char key = keyboard_getchar();
+		if (key) {
+			int top = window_top_index();
+			if (top != -1) {
+				window_t* win = &windows[top];
+				const app_vtable_t* vt = app_get_vtable(win->app_type);
+				if (vt && vt->on_key) {
+					vt->on_key(win, key);
+					expand_rect(&dx1, &dy1, &dx2, &dy2, win->x, win->y, win->w, win->h);
+					dirty = 1;
+					repaint_region(win->x, win->y, win->w, win->h);
+				}
 			}
 		}
 
