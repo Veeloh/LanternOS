@@ -2,7 +2,6 @@
 #include "pci.h"
 #include "idt.h"
 #include "vga.h"
-#include "acpi.h"
 
 // --- ACPI Table Definitions (Directly matches your acpi.c structures) ---
 typedef struct {
@@ -297,16 +296,6 @@ void mouse_init() {
     ps2_wait_write(); outb(PS2_CMD, 0xD4);
     ps2_wait_write(); outb(PS2_DATA, 0xF6);
     ps2_wait_read(); inb(PS2_DATA);
-<<<<<<< HEAD
-    ps2_wait_write(); outb(PS2_CMD, 0xD4);
-    ps2_wait_write(); outb(PS2_DATA, 0xF4);
-    ps2_wait_read(); inb(PS2_DATA);
-    idt_set_handler(44, (uint32_t)mouse_isr);
-    uint8_t master_mask = inb(0x21);
-    master_mask &= ~0x04;outb(0x21, master_mask);
-    uint8_t slave_mask = inb(0xA1);
-    slave_mask &= ~0x10;outb(0xA1, slave_mask);}// --- Coordinate Value Getters ---int mouse_get_x() { return mouse_x; }int mouse_get_y() { return mouse_y; }int mouse_left_pressed()   { return left_btn != 0; }int mouse_right_pressed()  { return right_btn != 0; }int mouse_middle_pressed() { return middle_btn != 0; }
-=======
 
     ps2_wait_write(); outb(PS2_CMD, 0xD4);
     ps2_wait_write(); outb(PS2_DATA, 0xF4);
@@ -328,4 +317,3 @@ int mouse_get_y() { return mouse_y; }
 int mouse_left_pressed()   { return left_btn != 0; }
 int mouse_right_pressed()  { return right_btn != 0; }
 int mouse_middle_pressed() { return middle_btn != 0; }
->>>>>>> 823db47d8ae65e0ca37f208a528df64f4e8d82c4
