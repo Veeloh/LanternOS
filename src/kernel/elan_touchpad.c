@@ -168,10 +168,39 @@ void elan_poll(int dump_raw) {
 	btn_left  = btn_left_bit  != 0;
 	btn_right = btn_right_bit != 0;
 
+	static int prev_finger_present = 0;
+
+	// Defensive: this pad is polled with no interrupt and no "data ready"
+	// handshake, so an occasional torn/misaligned I2C read can still pass
+	// the length check above but hand back a garbage coordinate. A real
+	// finger can't move more than a small fraction of the pad's full
+	// range between two consecutive polls DURING A CONTINUOUS DRAG, so
+	// treat any such single-sample jump as a suspect frame and hold the
+	// last good position rather than snapping the cursor to it - this is
+	// the direct cause of the "teleporting" cursor. A fresh touchdown
+	// (finger wasn't present last poll) is exempt, since landing your
+	// finger somewhere new on the pad is a legitimate large jump, not
+	// corrupted data. If legit fast drags start getting rejected too,
+	// raise MAX_JUMP.
+	#define ELAN_MAX_JUMP (ELAN_MAX_X / 6)
 	if (finger1_present) {
-		raw_x = ((finger_data[0] & 0xF0) << 4) | finger_data[1];
-		raw_y = ((finger_data[0] & 0x0F) << 8) | finger_data[2];
+		int nx = ((finger_data[0] & 0xF0) << 4) | finger_data[1];
+		int ny = ((finger_data[0] & 0x0F) << 8) | finger_data[2];
+		if (!prev_finger_present) {
+			raw_x = nx;
+			raw_y = ny;
+		} else {
+			int dx = nx - raw_x, dy = ny - raw_y;
+			if (dx < 0) dx = -dx;
+			if (dy < 0) dy = -dy;
+			if (dx <= ELAN_MAX_JUMP && dy <= ELAN_MAX_JUMP) {
+				raw_x = nx;
+				raw_y = ny;
+			}
+			// else: drop this sample, keep the last good raw_x/raw_y.
+		}
 	}
+	prev_finger_present = finger1_present;
 
 	// Two-finger data (finger2 present == touch_info & 0x10, i.e. bit4)
 	// is scroll/gesture input on this pad rather than pointer movement -
@@ -196,6 +225,10 @@ int elan_get_y(void) {
 	int screen_h = (int)vga_get_fb_height();
 	if (screen_h <= 0) screen_h = 200;
 	int y = (raw_y * screen_h) / ELAN_MAX_Y;
+	// Elan's raw Y increases moving UP the pad (away from the user),
+	// opposite of screen Y which increases downward - flip it here so
+	// moving your finger up moves the cursor up.
+	y = (screen_h - 1) - y;
 	if (y < 0) y = 0;
 	if (y >= screen_h) y = screen_h - 1;
 	return y;
