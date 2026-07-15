@@ -20,7 +20,7 @@ void pointer_poll(void) {
 	// PS/2 is interrupt-driven (mouse_handler() via IRQ12) - nothing to do
 	// here for that path. Elan has no interrupt wired up yet, so it has
 	// to be polled for a fresh report every loop iteration.
-	if (use_elan) elan_poll(0);
+	if (use_elan) elan_poll(1);
 }
 
 int pointer_get_x(void) {
