@@ -21,6 +21,45 @@ typedef enum { MB_NONE = 0, MB_FILE, MB_EDIT } mb_menu_t;
 
 static mb_menu_t s_open_menu = MB_NONE;
 
+// --- app-supplied menu items (see menubar.h) ---
+typedef struct {
+	const char* title;
+	menubar_cmd_t cmd;
+} menu_item_t;
+
+static menu_item_t s_file_items[MENUBAR_MAX_ITEMS];
+static int         s_file_count = 0;
+static menu_item_t s_edit_items[MENUBAR_MAX_ITEMS];
+static int         s_edit_count = 0;
+
+void menubar_add_item(menubar_menu_t menu, const char* title, menubar_cmd_t cmd) {
+	if (menu == MENUBAR_FILE) {
+		if (s_file_count >= MENUBAR_MAX_ITEMS) return;
+		s_file_items[s_file_count].title = title;
+		s_file_items[s_file_count].cmd   = cmd;
+		s_file_count++;
+	} else {
+		if (s_edit_count >= MENUBAR_MAX_ITEMS) return;
+		s_edit_items[s_edit_count].title = title;
+		s_edit_items[s_edit_count].cmd   = cmd;
+		s_edit_count++;
+	}
+}
+
+void menubar_clear_menu(void) {
+	s_file_count = 0;
+	s_edit_count = 0;
+	s_open_menu  = MB_NONE;
+}
+
+// rows a given menu should draw right now - real items if any were
+// registered, else the old blank STUB_ROWS look so an unwired menu still
+// opens as *something* rather than a zero-height panel
+static int menu_row_count(mb_menu_t m) {
+	int n = (m == MB_FILE) ? s_file_count : s_edit_count;
+	return n > 0 ? n : STUB_ROWS;
+}
+
 static int file_btn_x(void) { return TASKBAR_W + PAD; }
 static int edit_btn_x(void) { return file_btn_x() + BTN_W + BTN_GAP; }
 
@@ -41,15 +80,27 @@ static void draw_menu_button(int x, const char* label, int open) {
 	vga_draw_text(x + 6, 2, label, fg, bg);
 }
 
-// dropdown panel: just STUB_ROWS empty rows with a faint divider between
-// them - no labels/actions wired up yet, that's for whoever fills these in
-static void draw_dropdown(int x) {
+// dropdown panel: one row per registered item (title drawn in it), or
+// STUB_ROWS blank rows with just a faint divider if nothing's registered
+// for this menu yet
+static void draw_dropdown(int x, mb_menu_t m) {
+	menu_item_t* items = (m == MB_FILE) ? s_file_items : s_edit_items;
+	int count = (m == MB_FILE) ? s_file_count : s_edit_count;
+	int rows = menu_row_count(m);
+
 	int y = MENUBAR_H;
-	int h = STUB_ROWS * ITEM_H;
+	int h = rows * ITEM_H;
 	vga_fill_rect(x, y, DROPDOWN_W, h, PANEL_COLOUR);
 	vga_draw_rect(x, y, DROPDOWN_W, h, BORDER_COLOUR);
-	for (int i = 1; i < STUB_ROWS; i++) {
-		vga_fill_rect(x + 4, y + i * ITEM_H, DROPDOWN_W - 8, 1, STUB_ROW_COLOUR);
+
+	if (count > 0) {
+		for (int i = 0; i < count; i++) {
+			vga_draw_text(x + 6, y + i * ITEM_H + 2, items[i].title, TEXT_COLOUR, PANEL_COLOUR);
+		}
+	} else {
+		for (int i = 1; i < rows; i++) {
+			vga_fill_rect(x + 4, y + i * ITEM_H, DROPDOWN_W - 8, 1, STUB_ROW_COLOUR);
+		}
 	}
 }
 
@@ -68,15 +119,21 @@ void menubar_draw(int fb_w, const char* app_name) {
 		}
 	}
 
-	if (s_open_menu == MB_FILE) draw_dropdown(file_btn_x());
-	else if (s_open_menu == MB_EDIT) draw_dropdown(edit_btn_x());
+	if (s_open_menu == MB_FILE) draw_dropdown(file_btn_x(), MB_FILE);
+	else if (s_open_menu == MB_EDIT) draw_dropdown(edit_btn_x(), MB_EDIT);
 }
 
 int menubar_handle_click(int mx, int my) {
 	if (s_open_menu != MB_NONE) {
 		int dx = (s_open_menu == MB_FILE) ? file_btn_x() : edit_btn_x();
-		if (in_box(mx, my, dx, MENUBAR_H, DROPDOWN_W, STUB_ROWS * ITEM_H)) {
-			return 1; // clicked a stub row - absorb it, nothing wired up yet
+		int rows = menu_row_count(s_open_menu);
+		if (in_box(mx, my, dx, MENUBAR_H, DROPDOWN_W, rows * ITEM_H)) {
+			int row = (my - MENUBAR_H) / ITEM_H;
+			menu_item_t* items = (s_open_menu == MB_FILE) ? s_file_items : s_edit_items;
+			int count = (s_open_menu == MB_FILE) ? s_file_count : s_edit_count;
+			if (row >= 0 && row < count && items[row].cmd) items[row].cmd();
+			s_open_menu = MB_NONE; // picking an item closes the menu, same as real menu bars
+			return 1;
 		}
 	}
 
@@ -103,7 +160,7 @@ void menubar_full_rect(int fb_w, int* x, int* y, int* w, int* h) {
 	*w = fb_w - TASKBAR_W;
 	*h = MENUBAR_H;
 	if (s_open_menu != MB_NONE) {
-		*h = MENUBAR_H + STUB_ROWS * ITEM_H;
+		*h = MENUBAR_H + menu_row_count(s_open_menu) * ITEM_H;
 	}
 }
 
