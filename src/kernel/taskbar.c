@@ -263,11 +263,13 @@ void taskbar_draw(int fb_h, int battery_pct, int charging,
 		vga_fill_rect(SM_PANEL_X, SM_PANEL_Y, SM_PANEL_W, SM_PANEL_H, PANEL_COLOUR);
 		vga_draw_rect(SM_PANEL_X, SM_PANEL_Y, SM_PANEL_W, SM_PANEL_H, BORDER_COLOUR);
 
-		// header: back-to-shell (distinct "home" glyph), search bar, sun logo
+		// header: back-to-shell button (square chip with "/>" glyph), search bar, sun logo
 		vga_fill_rect(SM_PANEL_X, SM_PANEL_Y, SM_PANEL_W, SM_HEADER_H, ACCENT_COLOUR);
-		int hx = SM_PANEL_X + 8, hy = SM_PANEL_Y + 8;
-		vga_fill_rect(hx, hy, 6, 12, TEXT_DARK_COLOUR);
-		vga_fill_rect(hx, hy + 5, 14, 3, TEXT_DARK_COLOUR); // "return home" arrow-ish glyph
+		int hx = SM_PANEL_X + 7, hy = SM_PANEL_Y + 5;
+		int hsz = 26;
+		vga_fill_rect(hx, hy, hsz, hsz, PANEL_COLOUR);
+		vga_draw_rect(hx, hy, hsz, hsz, BORDER_COLOUR);
+		vga_draw_text(hx + (hsz - 16) / 2, hy + (hsz - 16) / 2, "/>", TEXT_DARK_COLOUR, PANEL_COLOUR);
 
 		int search_x = SM_PANEL_X + 40, search_w = SM_PANEL_W - 40 - 40;
 		vga_fill_rect(search_x, SM_PANEL_Y + 8, search_w, SM_HEADER_H - 16, PANEL_COLOUR);
@@ -307,9 +309,15 @@ tb_action_t taskbar_handle_click(int mx, int my, int* out_window_idx) {
 			return TB_RETURN_TO_SHELL;
 		}
 		int col_x = SM_PANEL_X + 12, col_y = SM_PANEL_Y + SM_HEADER_H + 12;
-		if (in_box(mx, my, col_x, col_y, SM_ICON_SZ, SM_ICON_SZ)) return TB_OPEN_FILES;
+		if (in_box(mx, my, col_x, col_y, SM_ICON_SZ, SM_ICON_SZ)) {
+			s_start_menu_open = 0; // launching an app closes the menu, like the back button does
+			return TB_OPEN_FILES;
+		}
 		int col2_y = col_y + SM_ICON_SZ + 10;
-		if (in_box(mx, my, col_x, col2_y, SM_ICON_SZ, SM_ICON_SZ)) return TB_OPEN_SETTINGS;
+		if (in_box(mx, my, col_x, col2_y, SM_ICON_SZ, SM_ICON_SZ)) {
+			s_start_menu_open = 0;
+			return TB_OPEN_SETTINGS;
+		}
 
 		if (in_box(mx, my, SM_PANEL_X, SM_PANEL_Y, SM_PANEL_W, SM_PANEL_H)) {
 			return TB_NONE; // clicked elsewhere inside the panel - absorb it
