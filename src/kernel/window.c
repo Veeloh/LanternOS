@@ -14,6 +14,12 @@
 #define WIN_BORDER_COLOUR 0x6E2C00
 #define WIN_TITLE_TEXT_COLOUR 0x4A2511
 
+// centred desktop watermark - same sun glyph as the taskbar's top-left icon
+// (taskbar.c's draw_sun), just scaled up. Kept here rather than shared with
+// taskbar.c since the taskbar's version is tied to its fixed ICON_SZ.
+#define DESKTOP_LOGO_SIZE    96
+#define DESKTOP_LOGO_COLOUR  WIN_TITLE_COLOUR
+
 static window_t windows[MAX_WINDOWS];
 static int z_order[MAX_WINDOWS];
 static int g_window_count = 0;
@@ -54,6 +60,32 @@ static void draw_window(window_t* win) {
 	vga_draw_text(win->x + 6, win->y + 4, win->title, WIN_TITLE_TEXT_COLOUR, WIN_TITLE_COLOUR);
 }
 
+// bounding box of the desktop logo - shared by the draw call and the
+// repaint dirty-rect check so they can never disagree about where it is.
+static void desktop_logo_rect(int* x, int* y, int* d) {
+	*d = DESKTOP_LOGO_SIZE;
+	*x = TASKBAR_W + (g_fb_w - TASKBAR_W - *d) / 2;
+	*y = (g_fb_h - *d) / 2;
+}
+
+// same ray/core proportions as taskbar.c's draw_sun (10/28 core, 4/28 ray
+// length, 2/28 ray thickness relative to icon size), just scaled up to d.
+static void draw_desktop_logo(void) {
+	int x, y, d;
+	desktop_logo_rect(&x, &y, &d);
+
+	int core = d * 10 / 28;
+	int ray_len = d * 4 / 28;
+	int ray_th = d * 2 / 28;
+	int cx = x + d / 2, cy = y + d / 2;
+
+	vga_fill_rect(cx - core / 2, cy - core / 2, core, core, DESKTOP_LOGO_COLOUR);
+	vga_fill_rect(cx - ray_th / 2, y,               ray_th, ray_len, DESKTOP_LOGO_COLOUR);
+	vga_fill_rect(cx - ray_th / 2, y + d - ray_len, ray_th, ray_len, DESKTOP_LOGO_COLOUR);
+	vga_fill_rect(x,               cy - ray_th / 2, ray_len, ray_th, DESKTOP_LOGO_COLOUR);
+	vga_fill_rect(x + d - ray_len, cy - ray_th / 2, ray_len, ray_th, DESKTOP_LOGO_COLOUR);
+}
+
 static int point_in_titlebar(window_t* win, int px, int py) {
 	return px >= win->x && px < win->x + win->w && py >= win->y && py < win->y + TITLE_H;
 }
@@ -64,6 +96,12 @@ static int rects_intersect(int ax, int ay, int aw, int ah, int bx, int by, int b
 
 static void repaint_region(int rx, int ry, int rw, int rh) {
 	vga_fill_rect(rx, ry, rw, rh, BG_COLOUR);
+
+	int lx, ly, ld;
+	desktop_logo_rect(&lx, &ly, &ld);
+	if (rects_intersect(lx, ly, ld, ld, rx, ry, rw, rh))
+		draw_desktop_logo();
+
 	for (int i = 0; i < g_window_count; i++) {
 		window_t* win = &windows[z_order[i]];
 		if (rects_intersect(win->x, win->y, win->w, win->h, rx, ry, rw, rh))
@@ -135,6 +173,7 @@ void desktop() {
 
 	vga_set_draw_target(backbuffer, fb_w, fb_h);
 	vga_fill_rect(0, 0, fb_w, fb_h, BG_COLOUR);
+	draw_desktop_logo();
 
 	cursor_reset();
 
@@ -170,72 +209,72 @@ void desktop() {
 		int taskbar_consumed = 0;
 
 		if (clicked) {
-    int menu_open_before = taskbar_start_menu_open();
-    int click_targets_taskbar = (mx >= 0 && mx < TASKBAR_W) || menu_open_before;
+			int menu_open_before = taskbar_start_menu_open();
+			int click_targets_taskbar = (mx >= 0 && mx < TASKBAR_W) || menu_open_before;
 
-    // capture the taskbar/start-menu's on-screen footprint BEFORE the
-    // click can mutate s_start_menu_open, so a closing click still
-    // invalidates the full (wider) area the panel used to occupy.
-    int tx0, ty0, tw0, th0;
-    taskbar_full_rect(fb_h, &tx0, &ty0, &tw0, &th0);
+			// capture the taskbar/start-menu's on-screen footprint BEFORE the
+			// click can mutate s_start_menu_open, so a closing click still
+			// invalidates the full (wider) area the panel used to occupy.
+			int tx0, ty0, tw0, th0;
+			taskbar_full_rect(fb_h, &tx0, &ty0, &tw0, &th0);
 
-    int out_idx = -1;
-    tb_action_t action = taskbar_handle_click(mx, my, &out_idx);
-    taskbar_consumed = click_targets_taskbar;
+			int out_idx = -1;
+			tb_action_t action = taskbar_handle_click(mx, my, &out_idx);
+			taskbar_consumed = click_targets_taskbar;
 
-    switch (action) {
-        case TB_POWER:
-            acpi_poweroff(); // does not return on success
-            break;
+			switch (action) {
+				case TB_POWER:
+					acpi_poweroff(); // does not return on success
+					break;
 
-        case TB_OPEN_TERMINAL: {
-            int idx = find_window_by_title("Terminal");
-            if (idx == -1) idx = spawn_window("Terminal", 240, 150);
-            if (idx != -1) {
-                bring_to_front(idx);
-                window_t* w = &windows[idx];
-                expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
-                dirty = 1;
-            }
-            break;
-        }
+				case TB_OPEN_TERMINAL: {
+					int idx = find_window_by_title("Terminal");
+					if (idx == -1) idx = spawn_window("Terminal", 240, 150);
+					if (idx != -1) {
+						bring_to_front(idx);
+						window_t* w = &windows[idx];
+						expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
+						dirty = 1;
+					}
+					break;
+				}
 
-        case TB_SELECT_WINDOW: {
-            bring_to_front(out_idx);
-            window_t* w = &windows[out_idx];
-            expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
-            dirty = 1;
-            break;
-        }
+				case TB_SELECT_WINDOW: {
+					bring_to_front(out_idx);
+					window_t* w = &windows[out_idx];
+					expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
+					dirty = 1;
+					break;
+				}
 
-        case TB_RETURN_TO_SHELL:
-        case TB_OPEN_FILES:
-        case TB_OPEN_SETTINGS:
-        case TB_NONE:
-        default:
-            break;
-    }
+				case TB_RETURN_TO_SHELL:
+				case TB_OPEN_FILES:
+				case TB_OPEN_SETTINGS:
+				case TB_NONE:
+				default:
+					break;
+			}
 
-    if (action == TB_RETURN_TO_SHELL) {
-        break; // exit desktop() back to the text-mode shell
-    }
+			if (action == TB_RETURN_TO_SHELL) {
+				break; // exit desktop() back to the text-mode shell
+			}
 
-    if (taskbar_consumed) {
-        // the start menu opening/closing (or a files/settings stub
-        // click, harmless no-ops for now) can change what's on
-        // screen in the taskbar/menu column, so fold that in too.
-        // Union the BEFORE and AFTER footprints: closing shrinks the
-        // panel's rect, so using only the post-click (narrower) rect
-        // would leave stale menu pixels on screen unrepainted.
-        int tx1, ty1, tw1, th1;
-        taskbar_full_rect(fb_h, &tx1, &ty1, &tw1, &th1);
+			if (taskbar_consumed) {
+				// the start menu opening/closing (or a files/settings stub
+				// click, harmless no-ops for now) can change what's on
+				// screen in the taskbar/menu column, so fold that in too.
+				// Union the BEFORE and AFTER footprints: closing shrinks the
+				// panel's rect, so using only the post-click (narrower) rect
+				// would leave stale menu pixels on screen unrepainted.
+				int tx1, ty1, tw1, th1;
+				taskbar_full_rect(fb_h, &tx1, &ty1, &tw1, &th1);
 
-        expand_rect(&dx1, &dy1, &dx2, &dy2, tx0, ty0, tw0, th0);
-        expand_rect(&dx1, &dy1, &dx2, &dy2, tx1, ty1, tw1, th1);
-        dirty = 1;
-        repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
-    }
-}
+				expand_rect(&dx1, &dy1, &dx2, &dy2, tx0, ty0, tw0, th0);
+				expand_rect(&dx1, &dy1, &dx2, &dy2, tx1, ty1, tw1, th1);
+				dirty = 1;
+				repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
+			}
+		}
 
 		if (pressed && dragging_index == -1 && !taskbar_consumed) {
 			for (int i = g_window_count - 1; i >= 0; i--) {
@@ -304,8 +343,7 @@ void desktop() {
 
 		prev_pressed = pressed;
 
-		char c = keyboard_getchar();
-		if (c == KEY_CTRL_C) break;
+		
 	}
 
 	vga_clear_draw_target();
