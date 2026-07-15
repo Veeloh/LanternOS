@@ -149,8 +149,11 @@ void elan_poll(int dump_raw) {
 		return;
 
 	if (dump_raw) {
-		vga_print("\nelan report: ");
-		for (int i = 0; i < (int)sizeof(buf) && i < 16; i++) { print_hex8(buf[i]); vga_print(" "); }
+		static int dump_counter = 0;
+		if ((dump_counter++ % 15) == 0) { // throttle so it's readable
+			vga_print("\nelan report: ");
+			for (int i = 0; i < (int)sizeof(buf) && i < 16; i++) { print_hex8(buf[i]); vga_print(" "); }
+		}
 	}
 
 	int len = buf[0] | (buf[1] << 8);
