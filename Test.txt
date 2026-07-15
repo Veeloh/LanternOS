@@ -1,1 +1,27 @@
-grep -B 5 -A 20 '_HID, "AMDI0030"\|_HID, "AMDI0031"\|Device (GPIO)' /tmp/dsdt.dsl /tmp/ssdt1.dsl /tmp/ssdt2.dsl
+matias@dev-machine:~/SolOS$ grep -B 5 -A 20 '_HID, "AMDI0030"\|_HID, "AMDI0031"\|Device (GPIO)' /tmp/dsdt.dsl /tmp/ssdt1.dsl /tmp/ssdt2.dsl
+/tmp/dsdt.dsl-            {
+/tmp/dsdt.dsl-                Return (0x0B)
+/tmp/dsdt.dsl-            }
+/tmp/dsdt.dsl-        }
+/tmp/dsdt.dsl-
+/tmp/dsdt.dsl:        Device (GPIO)
+/tmp/dsdt.dsl-        {
+/tmp/dsdt.dsl-            Name (_HID, "AMD0030")  // _HID: Hardware ID
+/tmp/dsdt.dsl-            Name (_CID, "AMD0030")  // _CID: Compatible ID
+/tmp/dsdt.dsl-            Name (_UID, Zero)  // _UID: Unique ID
+/tmp/dsdt.dsl-            Name (_DDN, "GPIO Controller")  // _DDN: DOS Device Name
+/tmp/dsdt.dsl-            Name (_CRS, ResourceTemplate ()  // _CRS: Current Resource Settings
+/tmp/dsdt.dsl-            {
+/tmp/dsdt.dsl-                Interrupt (ResourceConsumer, Level, ActiveLow, Shared, ,, )
+/tmp/dsdt.dsl-                {
+/tmp/dsdt.dsl-                    0x00000007,
+/tmp/dsdt.dsl-                }
+/tmp/dsdt.dsl-                Memory32Fixed (ReadWrite,
+/tmp/dsdt.dsl-                    0xFED81500,         // Address Base
+/tmp/dsdt.dsl-                    0x00000300,         // Address Length
+/tmp/dsdt.dsl-                    )
+/tmp/dsdt.dsl-            })
+/tmp/dsdt.dsl-            Method (_STA, 0, NotSerialized)  // _STA: Status
+/tmp/dsdt.dsl-            {
+/tmp/dsdt.dsl-                Return (0x0F)
+/tmp/dsdt.dsl-            }
