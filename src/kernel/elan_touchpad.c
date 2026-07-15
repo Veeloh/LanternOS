@@ -154,35 +154,30 @@ void elan_poll(int dump_raw) {
 	uint8_t touch_info = body[1];
 	uint8_t* finger_data = body + 2;
 
-	// Upper nibble of the touch-info byte is the finger count on this
-	// device family; bit0 is the physical clickpad button. Kept as a
-	// best-effort mapping from the upstream driver's convention - worth
-	// re-verifying with a dedicated click-vs-no-click capture the same
-	// way the X/Y fix above was verified.
-	int finger_count    = (touch_info >> 4) & 0x0F;
-	int finger1_present = finger_count >= 1;
-	int physical_click  = touch_info & 0x01;
+	// Verified against the real elan_i2c_core.c (elan_report_absolute()):
+	// finger i's presence is bit (3+i) of the touch-info byte - so finger0
+	// is bit3 (0x08) - NOT a finger-count value in the upper nibble (that
+	// was wrong in the previous edit and is why the cursor froze: for an
+	// ordinary single-finger touch bit3 is set but the upper nibble is 0,
+	// so "finger_count >= 1" was always false and raw_x/raw_y never got
+	// updated). Buttons are bit0=left, bit1=right, bit2=middle.
+	int finger1_present = touch_info & 0x08;
+	int btn_left_bit     = touch_info & 0x01;
+	int btn_right_bit    = touch_info & 0x02;
 
-	// Clickpad: one mechanical switch under the whole surface, not
-	// separate left/right buttons, so any physical click registers as
-	// left-click.
-	if (physical_click) {
-		btn_left = 1;
-		btn_right = 0;
-	} else {
-		btn_left = 0;
-		btn_right = 0;
-	}
+	btn_left  = btn_left_bit  != 0;
+	btn_right = btn_right_bit != 0;
 
 	if (finger1_present) {
 		raw_x = ((finger_data[0] & 0xF0) << 4) | finger_data[1];
 		raw_y = ((finger_data[0] & 0x0F) << 8) | finger_data[2];
 	}
 
-	// Two-finger data (finger_count >= 2) is scroll/gesture input on this
-	// pad rather than pointer movement - not wired up to anything yet.
-	// Left as a hook: finger_data + 5 (i.e. body + 7) is where finger2's
-	// 5-byte packet starts, same layout as finger1 above.
+	// Two-finger data (finger2 present == touch_info & 0x10, i.e. bit4)
+	// is scroll/gesture input on this pad rather than pointer movement -
+	// not wired up to anything yet. Left as a hook: finger_data + 5
+	// (i.e. body + 7) is where finger2's 5-byte packet starts, same
+	// layout as finger1 above.
 }
 
 int elan_get_raw_x(void) { return raw_x; }
