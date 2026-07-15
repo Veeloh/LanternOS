@@ -1,27 +1,28 @@
-matias@dev-machine:~/SolOS$ grep -B 5 -A 20 '_HID, "AMDI0030"\|_HID, "AMDI0031"\|Device (GPIO)' /tmp/dsdt.dsl /tmp/ssdt1.dsl /tmp/ssdt2.dsl
-/tmp/dsdt.dsl-            {
-/tmp/dsdt.dsl-                Return (0x0B)
-/tmp/dsdt.dsl-            }
-/tmp/dsdt.dsl-        }
-/tmp/dsdt.dsl-
-/tmp/dsdt.dsl:        Device (GPIO)
-/tmp/dsdt.dsl-        {
-/tmp/dsdt.dsl-            Name (_HID, "AMD0030")  // _HID: Hardware ID
-/tmp/dsdt.dsl-            Name (_CID, "AMD0030")  // _CID: Compatible ID
-/tmp/dsdt.dsl-            Name (_UID, Zero)  // _UID: Unique ID
-/tmp/dsdt.dsl-            Name (_DDN, "GPIO Controller")  // _DDN: DOS Device Name
-/tmp/dsdt.dsl-            Name (_CRS, ResourceTemplate ()  // _CRS: Current Resource Settings
-/tmp/dsdt.dsl-            {
-/tmp/dsdt.dsl-                Interrupt (ResourceConsumer, Level, ActiveLow, Shared, ,, )
-/tmp/dsdt.dsl-                {
-/tmp/dsdt.dsl-                    0x00000007,
-/tmp/dsdt.dsl-                }
-/tmp/dsdt.dsl-                Memory32Fixed (ReadWrite,
-/tmp/dsdt.dsl-                    0xFED81500,         // Address Base
-/tmp/dsdt.dsl-                    0x00000300,         // Address Length
-/tmp/dsdt.dsl-                    )
-/tmp/dsdt.dsl-            })
-/tmp/dsdt.dsl-            Method (_STA, 0, NotSerialized)  // _STA: Status
-/tmp/dsdt.dsl-            {
-/tmp/dsdt.dsl-                Return (0x0F)
-/tmp/dsdt.dsl-            }
+# 1. The ACPI hardware ID Linux matched (this is the real identifier, e.g. ELAN0634)
+cat /sys/bus/acpi/devices/*/hid 2>/dev/null | grep -i elan
+# or, more reliably:
+grep -i elan /sys/bus/acpi/devices/*/hid 2>/dev/null
+
+# 2. Confirms the same thing plus driver binding from dmesg
+dmesg | grep -i elan
+
+# 3. Full input device entry — shows the reported name/vendor/product IDs
+cat /proc/bus/input/devices | grep -B2 -A10 -i elan
+
+# 4. Kernel driver module info (confirms which driver bound, elan_i2c vs elantech vs i2c_hid)
+lsmod | grep -i elan
+
+# 5. If elan_i2c bound, it exposes real device metadata in sysfs — this is gold,
+#    it gives you actual product_id / firmware version / ic_type straight from the chip
+for f in /sys/bus/i2c/devices/i2c-ELAN*/; do
+  echo "== $f =="
+  cat "$f"/name 2>/dev/null
+  cat "$f"/firmware_version 2>/dev/null
+  cat "$f"/product_id 2>/dev/null
+  cat "$f"/sm_version 2>/dev/null
+  cat "$f"/iap_version 2>/dev/null
+done
+
+# 6. The actual I2C bus + address it's sitting on (cross-check against your 0x15 addr assumption)
+i2cdetect -l
+cat /sys/bus/i2c/devices/i2c-ELAN*/name 2>/dev/null
