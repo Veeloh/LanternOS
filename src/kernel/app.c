@@ -349,12 +349,21 @@ typedef struct {
 	int len;
 	char filename[TEXTEDIT_NAME_MAX]; // empty = untitled, nothing to Save into yet
 	int dirty;                        // modified since open/last save
+
+	// --- inline "type a filename" prompt, used by Save (on an untitled
+	// doc) and Save As - see textedit_start_save_as() below. While active,
+	// on_key routes keys into save_as_buf instead of the document, Enter
+	// commits the write, Ctrl-C cancels back to normal editing.
+	int save_as_active;
+	char save_as_buf[TEXTEDIT_NAME_MAX];
+	int save_as_len;
 } textedit_state_t;
 
 // menubar_add_item's cmd_t takes no arguments, so on_focus (called each
 // time a Text Edit window becomes frontmost) stashes which window here for
-// the Save callback to act on. Single-window assumption is fine for now -
-// same limitation menubar.h already documents for any app's menu items.
+// the Save/Save As callbacks to act on. Single-window assumption is fine
+// for now - same limitation menubar.h already documents for any app's
+// menu items.
 static window_t* g_textedit_focus_win = 0;
 
 static void textedit_on_open(window_t* win) {
@@ -363,6 +372,8 @@ static void textedit_on_open(window_t* win) {
 	st->len = 0;
 	st->filename[0] = 0;
 	st->dirty = 0;
+	st->save_as_active = 0;
+	st->save_as_len = 0;
 	win->app_state = st;
 }
 
@@ -384,20 +395,42 @@ static void textedit_load_file(window_t* win, const char* filename) {
 	st->buf[st->len] = 0;
 	str_copy(st->filename, filename, TEXTEDIT_NAME_MAX);
 	st->dirty = 0;
+	st->save_as_active = 0;
+}
+
+// Drops into the inline filename prompt (pre-filled with the current
+// filename, if any, so re-saving under the same name is just Enter).
+static void textedit_start_save_as(textedit_state_t* st) {
+	st->save_as_active = 1;
+	str_copy(st->save_as_buf, st->filename, TEXTEDIT_NAME_MAX);
+	st->save_as_len = str_len(st->save_as_buf);
 }
 
 static void textedit_cmd_save(void) {
 	if (!g_textedit_focus_win) return;
 	textedit_state_t* st = (textedit_state_t*)g_textedit_focus_win->app_state;
 	if (!st) return;
-	if (st->filename[0] == 0) return; // untitled - no "Save As" prompt yet, known gap
+	if (st->filename[0] == 0) {
+		// untitled - fall into the same "type a name" prompt Save As uses,
+		// instead of silently doing nothing (the old known gap).
+		textedit_start_save_as(st);
+		return;
+	}
 	int written = fat32_write_file(st->filename, (const uint8_t*)st->buf, (uint32_t)st->len);
 	if (written >= 0) st->dirty = 0;
+}
+
+static void textedit_cmd_save_as(void) {
+	if (!g_textedit_focus_win) return;
+	textedit_state_t* st = (textedit_state_t*)g_textedit_focus_win->app_state;
+	if (!st) return;
+	textedit_start_save_as(st);
 }
 
 static void textedit_on_focus(window_t* win) {
 	g_textedit_focus_win = win;
 	menubar_add_item(MENUBAR_FILE, "Save", textedit_cmd_save);
+	menubar_add_item(MENUBAR_FILE, "Save As", textedit_cmd_save_as);
 }
 
 static void textedit_draw(window_t* win) {
@@ -407,12 +440,20 @@ static void textedit_draw(window_t* win) {
 	// filename/status strip above the wrapped text body, same warm chrome
 	// colours as the rest of the app - draw_wrapped_text starts its own
 	// text a fixed offset below the title bar, so this needs to live in
-	// that same first row rather than overlapping it.
-	char status[TEXTEDIT_NAME_MAX + 16];
+	// that same first row rather than overlapping it. While the filename
+	// prompt is active it takes over this strip entirely.
+	char status[TEXTEDIT_NAME_MAX + 24];
 	int p = 0;
-	const char* name = st->filename[0] ? st->filename : "untitled";
-	for (int i = 0; name[i] && p < TEXTEDIT_NAME_MAX; i++) status[p++] = name[i];
-	if (st->dirty) { status[p++] = ' '; status[p++] = '*'; }
+	if (st->save_as_active) {
+		const char* prefix = "Save as: ";
+		for (int i = 0; prefix[i]; i++) status[p++] = prefix[i];
+		for (int i = 0; i < st->save_as_len; i++) status[p++] = st->save_as_buf[i];
+		status[p++] = '_'; // crude text-cursor so it's obvious typing goes here
+	} else {
+		const char* name = st->filename[0] ? st->filename : "untitled";
+		for (int i = 0; name[i] && p < TEXTEDIT_NAME_MAX; i++) status[p++] = name[i];
+		if (st->dirty) { status[p++] = ' '; status[p++] = '*'; }
+	}
 	status[p] = 0;
 	vga_draw_text(win->x + 6, win->y + TITLE_H + 4, status, APP_TEXT_COLOUR, APP_BG_COLOUR);
 
@@ -428,6 +469,30 @@ static void textedit_draw(window_t* win) {
 static void textedit_on_key(window_t* win, char c) {
 	textedit_state_t* st = (textedit_state_t*)win->app_state;
 	if (!st) return;
+
+	if (st->save_as_active) {
+		if (c == KEY_CTRL_C) { st->save_as_active = 0; return; } // cancel, back to editing
+		if (c == '\n') {
+			if (st->save_as_len > 0) {
+				st->save_as_buf[st->save_as_len] = 0;
+				int written = fat32_write_file(st->save_as_buf, (const uint8_t*)st->buf, (uint32_t)st->len);
+				if (written >= 0) {
+					str_copy(st->filename, st->save_as_buf, TEXTEDIT_NAME_MAX);
+					st->dirty = 0;
+				}
+			}
+			st->save_as_active = 0;
+			return;
+		}
+		if (c == '\b') {
+			if (st->save_as_len > 0) st->save_as_len--;
+			return;
+		}
+		if (st->save_as_len < TEXTEDIT_NAME_MAX - 1 && c >= 32 && c <= 126) {
+			st->save_as_buf[st->save_as_len++] = c;
+		}
+		return; // swallow every key while prompting - none of it edits the document
+	}
 
 	if (c == '\b') {
 		if (st->len > 0) { st->len--; st->dirty = 1; }
