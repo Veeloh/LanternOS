@@ -187,6 +187,14 @@ static int spawn_window(const char* title, int w, int h, app_type_t app_type) {
 	return idx;
 }
 
+// public wrapper - see window.h
+int window_spawn_or_focus(const char* title, int w, int h, app_type_t app_type) {
+	int idx = find_window_by_title(title);
+	if (idx == -1) idx = spawn_window(title, w, h, app_type);
+	if (idx != -1) bring_to_front(idx);
+	return idx;
+}
+
 void desktop() {
 	g_fb_w = (int)vga_get_fb_width();
 	g_fb_h = (int)vga_get_fb_height();
@@ -365,8 +373,18 @@ void desktop() {
 				expand_rect(&dx1, &dy1, &dx2, &dy2, win->x, win->y, win->w, win->h);
 				bring_to_front(idx);
 
+				int count_before_click = g_window_count;
 				const app_vtable_t* vt = app_get_vtable(win->app_type);
 				if (vt && vt->on_click) vt->on_click(win, mx - win->x, my - (win->y + TITLE_H));
+
+				// an app's on_click can spawn another window on the spot (e.g.
+				// Files double-clicking a file open into a Text Edit window) -
+				// fold the new window's rect in too, or it wouldn't get painted
+				// until some unrelated event made this region dirty again.
+				if (g_window_count > count_before_click) {
+					window_t* nw = &windows[z_order[g_window_count - 1]];
+					expand_rect(&dx1, &dy1, &dx2, &dy2, nw->x, nw->y, nw->w, nw->h);
+				}
 
 				dirty = 1;
 				repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
@@ -418,6 +436,18 @@ void desktop() {
 		int top = window_top_index();
 		if (top != last_top) {
 			last_top = top;
+
+			// clear whatever the previously-focused app registered before
+			// giving the newly-focused one a chance to add its own File/Edit
+			// items (see app.h's on_focus / menubar.h's known gap note) -
+			// otherwise two apps' items just pile up side by side.
+			menubar_clear_menu();
+			if (top != -1) {
+				window_t* focused = &windows[top];
+				const app_vtable_t* vt = app_get_vtable(focused->app_type);
+				if (vt && vt->on_focus) vt->on_focus(focused);
+			}
+
 			int mbx, mby, mbw, mbh;
 			menubar_full_rect(fb_w, &mbx, &mby, &mbw, &mbh);
 			expand_rect(&dx1, &dy1, &dx2, &dy2, mbx, mby, mbw, mbh);
