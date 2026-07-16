@@ -49,3 +49,17 @@ void vga_set_draw_target(uint32_t* buf, int w, int h);
 void vga_clear_draw_target(void);
 void vga_present(uint32_t* buf);
 void vga_present_rect(uint32_t* buf, int x, int y, int w, int h);
+
+// --- text capture mode ---
+//
+// While active, vga_putchar()/vga_print() append into `buf` (NUL-terminated,
+// up to max_len-1 bytes) instead of drawing glyphs to the real screen/back-
+// buffer. This lets any code that already prints through vga_print - like
+// shell.c's commands[] dispatcher - be reused verbatim to fill an app's own
+// window buffer instead of the fullscreen text console. '\b' pops the last
+// captured byte, same as the real console's backspace behaviour.
+//
+// Not re-entrant (one capture at a time, no nesting) - fine for shell.c's
+// use, which begins/ends a capture within a single dispatch call.
+void vga_capture_begin(char* buf, int max_len);
+int  vga_capture_end(void); // returns number of bytes captured
