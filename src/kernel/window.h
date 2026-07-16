@@ -33,3 +33,12 @@ int       window_count(void);
 int       window_z_order(int slot);   // slot 0 = backmost .. window_count()-1 = frontmost
 window_t* window_at(int idx);         // raw window by index (not z-order)
 int       window_top_index(void);     // raw index of the frontmost window, -1 if none
+
+// Finds an existing window by exact title and brings it to front, or
+// spawns a new one (app_type's on_open runs only in the spawn case) and
+// brings that to front instead. Returns the raw window index, or -1 if
+// there's no free slot for a new spawn. Lets an app (e.g. Files, opening
+// a file into a Text Edit window) create/reuse windows the same way the
+// taskbar's launcher icons already do, without window.c internals
+// (windows[]/spawn_window) leaking outside this file.
+int window_spawn_or_focus(const char* title, int w, int h, app_type_t app_type);
