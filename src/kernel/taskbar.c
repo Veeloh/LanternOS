@@ -199,6 +199,20 @@ static void draw_gear_icon(int x, int y, uint32_t colour) {
 	draw_filled_circle(cx, cy, 3, ICON_CHIP_COLOUR);          // centre hole
 }
 
+// start-menu "Text Editor" icon: a page silhouette (folded top-right
+// corner) with a few horizontal "text line" strokes, drawn in the chip's
+// own background colour so the lines read as gaps rather than solid bars
+static void draw_document_icon(int x, int y, uint32_t colour) {
+	int px = x + 9, py = y + 5;
+	int pw = SM_ICON_SZ - 18, ph = SM_ICON_SZ - 10;
+	vga_fill_rect(px, py, pw, ph, colour);
+	vga_fill_rect(px + pw - 5, py, 5, 5, ICON_CHIP_COLOUR); // folded corner notch
+
+	for (int i = 0; i < 3; i++) {
+		vga_fill_rect(px + 3, py + 7 + i * 5, pw - 6, 2, ICON_CHIP_COLOUR);
+	}
+}
+
 static void draw_app_chip(int x, int y, char letter, int highlighted) {
 	vga_fill_rect(x, y, ICON_SZ, ICON_SZ, ICON_CHIP_COLOUR);
 	vga_draw_rect(x, y, ICON_SZ, ICON_SZ, highlighted ? ACCENT_COLOUR : TASKBAR_BG_COLOUR);
@@ -290,6 +304,11 @@ void taskbar_draw(int fb_h, int battery_pct, int charging,
 		vga_draw_rect(col_x, col2_y, SM_ICON_SZ, SM_ICON_SZ, BORDER_COLOUR);
 		draw_gear_icon(col_x, col2_y, TEXT_DARK_COLOUR);
 
+		int col3_y = col2_y + SM_ICON_SZ + 10;
+		vga_fill_rect(col_x, col3_y, SM_ICON_SZ, SM_ICON_SZ, ICON_CHIP_COLOUR);
+		vga_draw_rect(col_x, col3_y, SM_ICON_SZ, SM_ICON_SZ, BORDER_COLOUR);
+		draw_document_icon(col_x, col3_y, TEXT_DARK_COLOUR);
+
 		// right panel: reserved for pinned/suggested apps
 		int rp_x = col_x + SM_ICON_SZ + 12;
 		int rp_w = SM_PANEL_X + SM_PANEL_W - 12 - rp_x;
@@ -318,6 +337,11 @@ tb_action_t taskbar_handle_click(int mx, int my, int* out_window_idx) {
 		if (in_box(mx, my, col_x, col2_y, SM_ICON_SZ, SM_ICON_SZ)) {
 			s_start_menu_open = 0;
 			return TB_OPEN_SETTINGS;
+		}
+		int col3_y = col2_y + SM_ICON_SZ + 10;
+		if (in_box(mx, my, col_x, col3_y, SM_ICON_SZ, SM_ICON_SZ)) {
+			s_start_menu_open = 0;
+			return TB_OPEN_TEXTEDIT;
 		}
 
 		if (in_box(mx, my, SM_PANEL_X, SM_PANEL_Y, SM_PANEL_W, SM_PANEL_H)) {
