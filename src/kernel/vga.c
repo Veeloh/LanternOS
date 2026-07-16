@@ -19,6 +19,26 @@ static int cursor_y = 0;
 static uint8_t fg_colour = 15; // white
 static uint8_t bg_colour = 0;  // black
 
+// --- text capture mode (see vga.h) ---
+static char* cap_buf = 0;
+static int   cap_max = 0;
+static int   cap_len = 0;
+
+void vga_capture_begin(char* buf, int max_len) {
+	cap_buf = buf;
+	cap_max = max_len;
+	cap_len = 0;
+	if (cap_buf && cap_max > 0) cap_buf[0] = 0;
+}
+
+int vga_capture_end(void) {
+	int len = cap_len;
+	cap_buf = 0;
+	cap_max = 0;
+	cap_len = 0;
+	return len;
+}
+
 // standard 16-colour VGA-ish palette, as 0xRRGGBB
 static const uint32_t palette[16] = {
 	0x000000, 0x0000AA, 0x00AA00, 0x00AAAA,
@@ -101,6 +121,18 @@ static void vga_scroll() {
 }
 
 void vga_putchar(char c) {
+	if (cap_buf) {
+		// capturing: append to the caller's buffer instead of touching the
+		// real screen/cursor - see vga_capture_begin() in vga.h.
+		if (c == '\b') {
+			if (cap_len > 0) cap_len--;
+		} else if (cap_len < cap_max - 1) {
+			cap_buf[cap_len++] = c;
+		}
+		cap_buf[cap_len] = 0;
+		return;
+	}
+
 	if (c == '\n') {
 		cursor_x = 0;
 		cursor_y++;
