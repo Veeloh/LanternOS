@@ -564,6 +564,42 @@ static void shell_execute() {
 }
 
 
+// See shell.h - same tokenize()/commands[] path shell_execute() uses below,
+// just capturing output into out_buf instead of the console. Kept entirely
+// separate from cmd_buffer/cursor_pos/history so it can't disturb whatever
+// line the real console prompt is mid-typing.
+void shell_exec_line(const char* line, char* out_buf, int out_max) {
+	char linebuf[MAX_CMD_LEN];
+	int i = 0;
+	while (line[i] && i < MAX_CMD_LEN - 1) { linebuf[i] = line[i]; i++; }
+	linebuf[i] = 0;
+
+	char* argv[MAX_ARGS];
+	int argc = tokenize(linebuf, argv, MAX_ARGS);
+
+	vga_capture_begin(out_buf, out_max);
+
+	if (argc == 0) {
+		vga_capture_end();
+		return;
+	}
+
+	int found = 0;
+	for (unsigned int c = 0; c < NUM_COMMANDS; c++) {
+		if (strcmp(argv[0], commands[c].name) == 0) {
+			commands[c].fn(argc, argv);
+			found = 1;
+			break;
+		}
+	}
+	if (!found) {
+		vga_print("Unknown command: ");
+		vga_print(argv[0]);
+	}
+
+	vga_capture_end();
+}
+
 void shell_init() {
 	vga_clear();
 	vga_set_colour(VGA_YELLOW, VGA_BLACK);
