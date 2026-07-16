@@ -86,7 +86,7 @@ void kernel_main(unsigned int multiboot_addr) {
 	// straight to the GUI after the keypress, but TB_RETURN_TO_SHELL (the
 	// start menu's header/back box) still needs somewhere to go, so keep
 	// the text shell as a fallback whenever desktop() returns.
-	desktop();
+//	desktop();
 
 
 	//clear and show shell (old less cool and more used name D:)
@@ -99,7 +99,7 @@ void kernel_main(unsigned int multiboot_addr) {
 //	vga_print("> ");
 
 
-//	desktop();
+
 
 	shell_init();
 
