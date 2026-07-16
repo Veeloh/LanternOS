@@ -47,22 +47,14 @@ static int uint_to_str(uint32_t v, char* out) {
 	return n;
 }
 
-// Draws `text` (len bytes, '\n' allowed) into a window's content area,
-// word-wrapping at the window's width and showing only the tail once it
-// overflows the available rows - i.e. basic terminal/log scrollback
-// behaviour. Any app with a scrolling text buffer (terminal, editor,
-// about panel) can reuse this instead of reinventing line layout.
+// Word-wraps `text` (len bytes, '\n' allowed) at `cols` characters per line,
+// filling line_start[]/line_len[] (each sized APP_TEXT_MAX_LINES) and
+// returning how many lines it produced. Shared by draw_wrapped_text and
+// the terminal's scrollbar layout so line-splitting can never drift
+// between what's drawn and what the scrollbar's geometry is based on.
 #define APP_TEXT_MAX_LINES 64
-static void draw_wrapped_text(window_t* win, const char* text, int len, uint32_t fg, uint32_t bg) {
-	int cols = (win->w - 12) / 8;
-	if (cols < 4) cols = 4;
-	int rows = (win->h - TITLE_H - 8) / 16;
-	if (rows < 1) rows = 1;
-
-	int line_start[APP_TEXT_MAX_LINES];
-	int line_len[APP_TEXT_MAX_LINES];
+static int wrap_text_lines(int cols, const char* text, int len, int* line_start, int* line_len) {
 	int nlines = 0;
-
 	int i = 0;
 	while (i < len && nlines < APP_TEXT_MAX_LINES) {
 		int start = i;
@@ -73,10 +65,34 @@ static void draw_wrapped_text(window_t* win, const char* text, int len, uint32_t
 		nlines++;
 		if (i < len && text[i] == '\n') i++; // consume the newline
 	}
+	return nlines;
+}
 
-	int first = (nlines > rows) ? (nlines - rows) : 0;
+// Draws `text` (len bytes, '\n' allowed) into a window's content area,
+// word-wrapping at the window's width. scroll_offset is how many lines
+// back from the latest the view is scrolled (0 = pinned to the newest
+// output/tail, i.e. the original always-show-the-tail behaviour every
+// existing caller still gets by passing 0). Any app with a scrolling
+// text buffer (terminal, editor, about panel) can reuse this instead of
+// reinventing line layout.
+static void draw_wrapped_text(window_t* win, const char* text, int len, uint32_t fg, uint32_t bg, int scroll_offset) {
+	int cols = (win->w - 12) / 8;
+	if (cols < 4) cols = 4;
+	int rows = (win->h - TITLE_H - 8) / 16;
+	if (rows < 1) rows = 1;
+
+	int line_start[APP_TEXT_MAX_LINES];
+	int line_len[APP_TEXT_MAX_LINES];
+	int nlines = wrap_text_lines(cols, text, len, line_start, line_len);
+
+	int max_offset = (nlines > rows) ? (nlines - rows) : 0;
+	if (scroll_offset > max_offset) scroll_offset = max_offset;
+	if (scroll_offset < 0) scroll_offset = 0;
+
+	int last = nlines - scroll_offset;
+	int first = (last > rows) ? (last - rows) : 0;
 	int y = win->y + TITLE_H + 4;
-	for (int l = first; l < nlines; l++) {
+	for (int l = first; l < last; l++) {
 		char line[80];
 		int n = line_len[l];
 		if (n > 79) n = 79;
@@ -100,8 +116,18 @@ static void draw_wrapped_text(window_t* win, const char* text, int len, uint32_t
 typedef struct {
 	char buf[TERMINAL_BUF_MAX];
 	int len;
-	int input_start; // index in buf where the line currently being typed begins
+	int input_start;    // index in buf where the line currently being typed begins
+	int scroll_offset;  // wrapped lines scrolled back from the tail; 0 = pinned to latest output
 } terminal_state_t;
+
+// scrollbar - a fixed-width strip reserved along the right edge of the
+// content area. No drag yet: window.c only forwards discrete clicks to
+// apps (see app.h's on_click doc), not held-mouse motion, so this is a
+// classic click-the-track-to-page scrollbar rather than a draggable one.
+#define TERM_SCROLLBAR_W       8
+#define TERM_SCROLLBAR_MARGIN  2
+#define TERM_SCROLLBAR_TRACK_COLOUR 0xF3D9A0
+#define TERM_SCROLLBAR_THUMB_COLOUR 0x6E2C00
 
 // Appends `text` (len bytes) to the scrollback, dropping the oldest bytes
 // first if it would overflow TERMINAL_BUF_MAX - keeps the buffer a rolling
@@ -136,6 +162,7 @@ static void terminal_on_open(window_t* win) {
 	if (!st) return;
 	st->len = 0;
 	st->input_start = 0;
+	st->scroll_offset = 0;
 	const char* banner = "SolOS terminal\n";
 	terminal_append(st, banner, str_len(banner));
 	terminal_print_prompt(st);
@@ -147,15 +174,99 @@ static void terminal_on_close(window_t* win) {
 	win->app_state = 0;
 }
 
+// Scrollback + scrollbar geometry, computed once and shared by the draw
+// and click handlers so they can never disagree about where the thumb
+// is - same shared-bounding-box pattern window.c's close button uses.
+// Coordinates are absolute (screen) to match draw_wrapped_text's own
+// win->x/win->y-relative drawing.
+typedef struct {
+	int rows;                              // visible text rows
+	int max_offset;                        // largest valid scroll_offset (0 = everything fits, nothing to scroll)
+	int track_x, track_y, track_w, track_h;
+	int thumb_y, thumb_h;
+} terminal_scrollbar_t;
+
+static void terminal_layout(window_t* win, terminal_state_t* st, terminal_scrollbar_t* sb) {
+	int cols = (win->w - 12 - TERM_SCROLLBAR_W - TERM_SCROLLBAR_MARGIN) / 8;
+	if (cols < 4) cols = 4;
+	sb->rows = (win->h - TITLE_H - 8) / 16;
+	if (sb->rows < 1) sb->rows = 1;
+
+	int line_start[APP_TEXT_MAX_LINES];
+	int line_len[APP_TEXT_MAX_LINES];
+	int nlines = wrap_text_lines(cols, st->buf, st->len, line_start, line_len);
+	sb->max_offset = (nlines > sb->rows) ? (nlines - sb->rows) : 0;
+
+	sb->track_w = TERM_SCROLLBAR_W;
+	sb->track_x = win->x + win->w - TERM_SCROLLBAR_MARGIN - TERM_SCROLLBAR_W;
+	sb->track_y = win->y + TITLE_H + 2;
+	sb->track_h = win->h - TITLE_H - 4;
+
+	if (sb->max_offset == 0) {
+		sb->thumb_h = sb->track_h; // nothing to scroll - thumb fills the whole track
+		sb->thumb_y = sb->track_y;
+		return;
+	}
+
+	sb->thumb_h = sb->track_h * sb->rows / nlines;
+	if (sb->thumb_h < 10) sb->thumb_h = 10; // stay grabbable/visible even in a long scrollback
+	int off = st->scroll_offset;
+	if (off > sb->max_offset) off = sb->max_offset;
+	int range = sb->track_h - sb->thumb_h;
+	sb->thumb_y = sb->track_y + range * (sb->max_offset - off) / sb->max_offset;
+}
+
 static void terminal_draw(window_t* win) {
 	terminal_state_t* st = (terminal_state_t*)win->app_state;
 	if (!st) return;
-	draw_wrapped_text(win, st->buf, st->len, APP_TEXT_COLOUR, APP_BG_COLOUR);
+
+	terminal_scrollbar_t sb;
+	terminal_layout(win, st, &sb);
+	if (st->scroll_offset > sb.max_offset) st->scroll_offset = sb.max_offset;
+
+	// narrow the wrapped-text area by the scrollbar's width so long lines
+	// never render underneath it - same "fake a shorter window for this
+	// call only" trick textedit_draw uses for its status strip above.
+	window_t body = *win;
+	body.w = win->w - TERM_SCROLLBAR_W - TERM_SCROLLBAR_MARGIN;
+	draw_wrapped_text(&body, st->buf, st->len, APP_TEXT_COLOUR, APP_BG_COLOUR, st->scroll_offset);
+
+	vga_fill_rect(sb.track_x, sb.track_y, sb.track_w, sb.track_h, TERM_SCROLLBAR_TRACK_COLOUR);
+	vga_fill_rect(sb.track_x + 1, sb.thumb_y, sb.track_w - 2, sb.thumb_h, TERM_SCROLLBAR_THUMB_COLOUR);
+}
+
+// Clicking the scrollbar tracks pages the view: above the thumb scrolls
+// back a page, below it scrolls forward a page (toward the live tail).
+// Clicking the thumb itself, or anywhere in the text area, is a no-op.
+static void terminal_on_click(window_t* win, int lx, int ly) {
+	terminal_state_t* st = (terminal_state_t*)win->app_state;
+	if (!st) return;
+
+	terminal_scrollbar_t sb;
+	terminal_layout(win, st, &sb);
+	if (sb.max_offset == 0) return; // whole scrollback already fits, nothing to page
+
+	int ax = win->x + lx;
+	int ay = win->y + TITLE_H + ly; // on_click's lx/ly are body-relative (see app.h)
+	if (ax < sb.track_x || ax >= sb.track_x + sb.track_w) return;
+
+	if (ay < sb.thumb_y) {
+		st->scroll_offset += sb.rows - 1;
+		if (st->scroll_offset > sb.max_offset) st->scroll_offset = sb.max_offset;
+	} else if (ay >= sb.thumb_y + sb.thumb_h) {
+		st->scroll_offset -= sb.rows - 1;
+		if (st->scroll_offset < 0) st->scroll_offset = 0;
+	}
 }
 
 static void terminal_on_key(window_t* win, char c) {
 	terminal_state_t* st = (terminal_state_t*)win->app_state;
 	if (!st) return;
+
+	// typing always snaps the view back to the live tail, same as any
+	// normal terminal - otherwise a keystroke while scrolled up would
+	// echo/run somewhere off-screen and look like it did nothing.
+	st->scroll_offset = 0;
 
 	if (c == '\n') {
 		int line_len = st->len - st->input_start;
@@ -198,7 +309,7 @@ static const app_vtable_t terminal_vtable = {
 	.on_close = terminal_on_close,
 	.draw     = terminal_draw,
 	.on_key   = terminal_on_key,
-	.on_click = 0,
+	.on_click = terminal_on_click,
 };
 
 // --------------------------------- files ----------------------------------
@@ -463,7 +574,7 @@ static void textedit_draw(window_t* win) {
 	window_t body = *win;
 	body.y += 16;
 	body.h -= 16;
-	draw_wrapped_text(&body, st->buf, st->len, APP_TEXT_COLOUR, APP_BG_COLOUR);
+	draw_wrapped_text(&body, st->buf, st->len, APP_TEXT_COLOUR, APP_BG_COLOUR, 0);
 }
 
 static void textedit_on_key(window_t* win, char c) {
