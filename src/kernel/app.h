@@ -38,6 +38,13 @@ typedef struct {
 	// the title bar). lx/ly are local coordinates relative to the body's
 	// top-left corner, i.e. (0,0) is (win->x, win->y + TITLE_H).
 	void (*on_click)(window_t* win, int lx, int ly);
+
+	// Called whenever this window becomes the frontmost/focused one
+	// (window.c calls menubar_clear_menu() right before this, so a fresh
+	// on_focus can register its own File/Edit items via menubar_add_item()
+	// without piling up alongside whatever the previously-focused app
+	// registered - see menubar.h). Optional; most apps don't need it.
+	void (*on_focus)(window_t* win);
 } app_vtable_t;
 
 // Returns the vtable for a given app type, or NULL for APP_NONE / any
