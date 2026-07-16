@@ -1,6 +1,7 @@
 #include "taskbar.h"
 #include "window.h"
 #include "vga.h"
+#include "menubar.h"
 
 // Same warm palette as window.c's chrome, so the taskbar/start menu look
 // like they belong to the same desktop rather than a bolted-on strip.
@@ -21,7 +22,7 @@
 #define MAX_VISIBLE_OPEN   3   // beyond this we show a "+N" overflow chip
 
 #define SM_PANEL_X      (TASKBAR_W + 8)
-#define SM_PANEL_Y      PAD
+#define SM_PANEL_Y      (MENUBAR_H + PAD) // sits just under the menu bar, was PAD (clipped into it)
 #define SM_PANEL_W       360
 #define SM_PANEL_H       220
 #define SM_HEADER_H      36
