@@ -17,7 +17,8 @@
 #include "mouse.h"
 #include "pointer.h"
 #include "cursor.h"
-//#include "window.c"
+#include "window.h"
+
 
 void test_process() {
 	int i = 0;
@@ -53,9 +54,7 @@ void kernel_main(unsigned int multiboot_addr) {
 	vga_set_colour(VGA_WHITE, VGA_BLACK);
 	vga_set_cursor(27, 15);
 	vga_print("Press any key to continue...");
-	
 
-	
 	pic_remap();
 	idt_init();
 	syscall_init();
@@ -78,14 +77,16 @@ void kernel_main(unsigned int multiboot_addr) {
 	//enable interupts
 	__asm__ volatile ("sti");
 
-	vga_print("SolOS kernel loaded!"); //finally works yippie
-
 	// trigger a software interrupt to test IDT (works great :P)
 	//	__asm__ volatile ("int $0x80");
 
-
 	//wait for keypress
 	while(keyboard_getchar() == 0);
+
+	// straight to the GUI after the keypress, but TB_RETURN_TO_SHELL (the
+	// start menu's header/back box) still needs somewhere to go, so keep
+	// the text shell as a fallback whenever desktop() returns.
+	desktop();
 
 
 	//clear and show shell (old less cool and more used name D:)
@@ -99,8 +100,8 @@ void kernel_main(unsigned int multiboot_addr) {
 
 
 //	desktop();
+
 	shell_init();
-//	clock_draw();
 
 
 	
