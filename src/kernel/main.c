@@ -17,6 +17,7 @@
 #include "mouse.h"
 #include "pointer.h"
 #include "cursor.h"
+//#include "window.c"
 
 void test_process() {
 	int i = 0;
@@ -95,9 +96,14 @@ void kernel_main(unsigned int multiboot_addr) {
 //	vga_set_colour(VGA_WHITE, VGA_BLACK);
 //	vga_set_cursor(0, 1);
 //	vga_print("> ");
+
+
+//	desktop();
 	shell_init();
 //	clock_draw();
 
+
+	
 	while(1) {
 		shell_run();
 		cursor_update();
