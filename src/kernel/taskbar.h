@@ -11,6 +11,7 @@ typedef enum {
 	TB_RETURN_TO_SHELL,   // start menu "back" button -> exit desktop() to the text shell
 	TB_OPEN_FILES,        // start menu file browser icon (stub, no app yet)
 	TB_OPEN_SETTINGS,     // start menu settings icon (stub, no app yet)
+	TB_OPEN_TEXTEDIT,     // start menu text editor icon - opens a blank Text Edit window
 } tb_action_t;
 
 // Draws the taskbar strip, and the start menu popup if it's open, into the
