@@ -298,6 +298,20 @@ void desktop() {
 					break;
 				}
 
+				case TB_OPEN_TEXTEDIT: {
+					// blank/untitled Text Edit window - same find-or-spawn pattern
+					// as the cases above, just reached through window_spawn_or_
+					// focus() (window.h) since that's the public entry point
+					// app.c's Files also uses (files_on_click, on double-click).
+					int idx = window_spawn_or_focus("Text Editor", 320, 220, APP_TEXTEDIT);
+					if (idx != -1) {
+						window_t* w = &windows[idx];
+						expand_rect(&dx1, &dy1, &dx2, &dy2, w->x, w->y, w->w, w->h);
+						dirty = 1;
+					}
+					break;
+				}
+
 				case TB_SELECT_WINDOW: {
 					bring_to_front(out_idx);
 					window_t* w = &windows[out_idx];
