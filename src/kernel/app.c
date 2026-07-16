@@ -1,15 +1,40 @@
 #include "app.h"
 #include "vga.h"
 #include "heap.h"
+#include "shell.h"
+#include "fat32.h"
+#include "keyboard.h"
+#include "timer.h"
+#include "window.h"
+#include "menubar.h"
 
 // Same warm palette as window.c's chrome / taskbar.c's chip colours -
 // window.c doesn't expose its WIN_* defines, so (like taskbar.c already
 // does) we keep our own copy here rather than plumbing a shared header
 // through for two colour constants.
-#define APP_TEXT_COLOUR  0x4A2511   // WIN_TITLE_TEXT_COLOUR
-#define APP_BG_COLOUR    0xFFF8DC   // WIN_BODY_COLOUR
+#define APP_TEXT_COLOUR      0x4A2511   // WIN_TITLE_TEXT_COLOUR
+#define APP_BG_COLOUR        0xFFF8DC   // WIN_BODY_COLOUR
+#define APP_HIGHLIGHT_COLOUR 0xF39C12   // WIN_TITLE_COLOUR - selected-row highlight
+
+// forward decl - files_on_click (below) opens a double-clicked file into a
+// Text Edit window; the real definition lives down in the text-edit section
+// since it needs that app's own state layout.
+static void textedit_load_file(window_t* win, const char* filename);
 
 // ---------------------------- shared helpers ----------------------------
+
+// tiny strlen/strcpy - no libc in this freestanding build
+static int str_len(const char* s) {
+	int n = 0;
+	while (s[n]) n++;
+	return n;
+}
+
+static void str_copy(char* dst, const char* src, int dst_max) {
+	int i = 0;
+	while (src[i] && i < dst_max - 1) { dst[i] = src[i]; i++; }
+	dst[i] = 0;
+}
 
 // tiny uint->decimal-string helper - no snprintf in this freestanding build
 static int uint_to_str(uint32_t v, char* out) {
@@ -63,23 +88,57 @@ static void draw_wrapped_text(window_t* win, const char* text, int len, uint32_t
 }
 
 // ------------------------------- terminal --------------------------------
-// Real shell-command wiring is tomorrow's job (hook this into the same
-// commands[] dispatcher shell.c already has). Tonight this just proves
-// the pipeline: on_open allocates state, on_key appends typed characters,
-// draw renders the scrolling buffer - so plugging in real command
-// execution tomorrow is a drop-in swap of on_key's body.
-#define TERMINAL_BUF_MAX 512
+// Real command wiring: on Enter, whatever's been typed since the last
+// prompt gets handed to shell_exec_line() (shell.h), which tokenizes it
+// and dispatches through the exact same commands[] table the fullscreen
+// console uses - the output gets captured straight into this window's own
+// scrollback buffer instead of the real screen. Everything else (typing,
+// backspace, scrollback rendering) is unchanged from the stub.
+#define TERMINAL_BUF_MAX   1024
+#define TERMINAL_LINE_MAX  128
+#define TERMINAL_CAP_MAX   512
 typedef struct {
 	char buf[TERMINAL_BUF_MAX];
 	int len;
+	int input_start; // index in buf where the line currently being typed begins
 } terminal_state_t;
+
+// Appends `text` (len bytes) to the scrollback, dropping the oldest bytes
+// first if it would overflow TERMINAL_BUF_MAX - keeps the buffer a rolling
+// window instead of just refusing to append once full (which would make a
+// long-running terminal go silent). input_start is shifted to match so the
+// "where does the current typed line start" bookkeeping stays correct.
+static void terminal_append(terminal_state_t* st, const char* text, int len) {
+	if (len <= 0) return;
+	if (len >= TERMINAL_BUF_MAX) {
+		text += (len - (TERMINAL_BUF_MAX - 1));
+		len = TERMINAL_BUF_MAX - 1;
+	}
+	if (st->len + len > TERMINAL_BUF_MAX - 1) {
+		int drop = st->len + len - (TERMINAL_BUF_MAX - 1);
+		for (int i = drop; i < st->len; i++) st->buf[i - drop] = st->buf[i];
+		st->len -= drop;
+		st->input_start -= drop;
+		if (st->input_start < 0) st->input_start = 0;
+	}
+	for (int i = 0; i < len; i++) st->buf[st->len++] = text[i];
+}
+
+static void terminal_print_prompt(terminal_state_t* st) {
+	const char* cwd = fat32_get_cwd();
+	terminal_append(st, cwd, str_len(cwd));
+	terminal_append(st, "> ", 2);
+	st->input_start = st->len;
+}
 
 static void terminal_on_open(window_t* win) {
 	terminal_state_t* st = (terminal_state_t*)kmalloc(sizeof(terminal_state_t));
 	if (!st) return;
 	st->len = 0;
-	const char* banner = "SolOS terminal (stub)\nreal command wiring: tomorrow\n> ";
-	for (int i = 0; banner[i] && st->len < TERMINAL_BUF_MAX - 1; i++) st->buf[st->len++] = banner[i];
+	st->input_start = 0;
+	const char* banner = "SolOS terminal\n";
+	terminal_append(st, banner, str_len(banner));
+	terminal_print_prompt(st);
 	win->app_state = st;
 }
 
@@ -97,9 +156,39 @@ static void terminal_draw(window_t* win) {
 static void terminal_on_key(window_t* win, char c) {
 	terminal_state_t* st = (terminal_state_t*)win->app_state;
 	if (!st) return;
+
+	if (c == '\n') {
+		int line_len = st->len - st->input_start;
+		char line[TERMINAL_LINE_MAX];
+		if (line_len >= TERMINAL_LINE_MAX) line_len = TERMINAL_LINE_MAX - 1;
+		for (int i = 0; i < line_len; i++) line[i] = st->buf[st->input_start + i];
+		line[line_len] = 0;
+
+		terminal_append(st, "\n", 1);
+
+		char out[TERMINAL_CAP_MAX];
+		shell_exec_line(line, out, TERMINAL_CAP_MAX);
+		int out_len = str_len(out);
+		if (out_len > 0) {
+			terminal_append(st, out, out_len);
+			terminal_append(st, "\n", 1);
+		}
+
+		terminal_print_prompt(st);
+		return;
+	}
+
 	if (c == '\b') {
-		if (st->len > 0) st->len--;
-	} else if (st->len < TERMINAL_BUF_MAX - 1 && ((c >= 32 && c <= 126) || c == '\n')) {
+		if (st->len > st->input_start) st->len--;
+		return;
+	}
+
+	// KEY_UP/KEY_DOWN/KEY_LEFT/KEY_RIGHT (keyboard.h) aren't handled here -
+	// no in-window command history/cursor movement yet, same gap the
+	// fullscreen console's history feature closed for itself already.
+	// Falls through harmlessly since they're outside the printable-ASCII
+	// range checked below.
+	if (st->len < TERMINAL_BUF_MAX - 1 && (c >= 32 && c <= 126)) {
 		st->buf[st->len++] = c;
 	}
 }
@@ -113,17 +202,107 @@ static const app_vtable_t terminal_vtable = {
 };
 
 // --------------------------------- files ----------------------------------
-// Placeholder for tonight. Tomorrow: call the new fat32_list_dir_entries()
-// (fat32.h) into a small array in app_state, draw one row per entry, and
-// use on_click's ly to figure out which row was clicked (cd/open it).
+// fat32_list_dir_entries() (fat32.h) fills app_state's own array once on
+// open/refresh; draw renders one row per entry; on_click hit-tests the row
+// from ly and either just selects it (single click) or acts on it (double
+// click, timer.c-timed): a directory cd's into it and refreshes the
+// listing, a file opens into a Text Edit window via window_spawn_or_focus()
+// (window.h) + textedit_load_file() further down this file.
+#define FILES_MAX_ENTRIES 32
+#define FILES_ROW_H       16
+#define FILES_HEADER_H    18
+#define FILES_DBLCLICK_TICKS 40 // timer.c runs at 100Hz -> ~0.4s between clicks
+
+typedef struct {
+	fat32_dirent_t entries[FILES_MAX_ENTRIES];
+	int count;
+	int selected; // row index, -1 = none
+	uint32_t last_click_ticks;
+	int last_click_row;
+} files_state_t;
+
+static void files_refresh(files_state_t* st) {
+	st->count = fat32_list_dir_entries(st->entries, FILES_MAX_ENTRIES);
+	st->selected = -1;
+}
+
+static void files_on_open(window_t* win) {
+	files_state_t* st = (files_state_t*)kmalloc(sizeof(files_state_t));
+	if (!st) return;
+	st->last_click_ticks = 0;
+	st->last_click_row = -1;
+	files_refresh(st);
+	win->app_state = st;
+}
+
+static void files_on_close(window_t* win) {
+	if (win->app_state) kfree(win->app_state);
+	win->app_state = 0;
+}
+
 static void files_draw(window_t* win) {
-	vga_draw_text(win->x + 6, win->y + TITLE_H + 6,  "Files - wire up tomorrow", APP_TEXT_COLOUR, APP_BG_COLOUR);
-	vga_draw_text(win->x + 6, win->y + TITLE_H + 22, "fat32_list_dir_entries()", APP_TEXT_COLOUR, APP_BG_COLOUR);
-	vga_draw_text(win->x + 6, win->y + TITLE_H + 38, "is ready in fat32.h", APP_TEXT_COLOUR, APP_BG_COLOUR);
+	files_state_t* st = (files_state_t*)win->app_state;
+	if (!st) return;
+
+	int y = win->y + TITLE_H + 4;
+	vga_draw_text(win->x + 6, y, fat32_get_cwd(), APP_TEXT_COLOUR, APP_BG_COLOUR);
+	y += FILES_HEADER_H;
+
+	int max_rows = (win->y + win->h - y) / FILES_ROW_H;
+	for (int i = 0; i < st->count && i < max_rows; i++) {
+		uint32_t row_bg = (i == st->selected) ? APP_HIGHLIGHT_COLOUR : APP_BG_COLOUR;
+		vga_fill_rect(win->x + 2, y, win->w - 4, FILES_ROW_H, row_bg);
+
+		char line[48];
+		int p = 0;
+		line[p++] = st->entries[i].is_dir ? '/' : ' ';
+		line[p++] = ' ';
+		int name_len = str_len(st->entries[i].name);
+		for (int k = 0; k < name_len && p < 40; k++) line[p++] = st->entries[i].name[k];
+		line[p] = 0;
+		vga_draw_text(win->x + 6, y + 1, line, APP_TEXT_COLOUR, row_bg);
+		y += FILES_ROW_H;
+	}
+
+	if (st->count == 0) {
+		vga_draw_text(win->x + 6, y, "(empty)", APP_TEXT_COLOUR, APP_BG_COLOUR);
+	}
+}
+
+static void files_on_click(window_t* win, int lx, int ly) {
+	(void)lx;
+	files_state_t* st = (files_state_t*)win->app_state;
+	if (!st) return;
+
+	int row = (ly - FILES_HEADER_H) / FILES_ROW_H;
+	if (row < 0 || row >= st->count) { st->selected = -1; return; }
+
+	uint32_t now = timer_get_ticks();
+	int is_double_click = (row == st->last_click_row) &&
+	                       (now - st->last_click_ticks) <= FILES_DBLCLICK_TICKS;
+
+	st->last_click_row = row;
+	st->last_click_ticks = now;
+	st->selected = row;
+
+	if (!is_double_click) return;
+
+	fat32_dirent_t* entry = &st->entries[row];
+	if (entry->is_dir) {
+		fat32_change_dir(entry->name);
+		files_refresh(st);
+		st->last_click_row = -1; // don't chain a double-click across a directory change
+	} else {
+		int idx = window_spawn_or_focus("Text Editor", 320, 220, APP_TEXTEDIT);
+		if (idx != -1) textedit_load_file(window_at(idx), entry->name);
+	}
 }
 
 static const app_vtable_t files_vtable = {
-	.draw = files_draw,
+	.on_open  = files_on_open,
+	.on_close = files_on_close,
+	.draw     = files_draw,
+	.on_click = files_on_click,
 };
 
 // -------------------------------- settings --------------------------------
@@ -154,17 +333,119 @@ static const app_vtable_t about_vtable = {
 };
 
 // -------------------------------- text edit --------------------------------
-// Placeholder for tonight - but it can reuse terminal_state_t's pattern
-// almost verbatim tomorrow (typed buffer + fat32_write_file on save),
-// so no new plumbing needed here, just a dedicated vtable slot.
+// Same typed-buffer-and-on_key shape as the terminal, but it's a plain
+// editable buffer (Enter inserts a literal '\n' instead of dispatching a
+// command) and it round-trips through fat32_read_file/fat32_write_file
+// (fat32.h) for load/save. Save is wired up as a real File-menu item
+// (menubar_add_item, registered from on_focus) rather than a keybinding -
+// see app.h's on_focus and menubar.h's "items are global, not per-window"
+// known gap, which is why we track the one focused Text Edit window in
+// g_textedit_focus_win rather than passing it through the cmd callback.
+#define TEXTEDIT_BUF_MAX  4096
+#define TEXTEDIT_NAME_MAX 64
+
+typedef struct {
+	char buf[TEXTEDIT_BUF_MAX];
+	int len;
+	char filename[TEXTEDIT_NAME_MAX]; // empty = untitled, nothing to Save into yet
+	int dirty;                        // modified since open/last save
+} textedit_state_t;
+
+// menubar_add_item's cmd_t takes no arguments, so on_focus (called each
+// time a Text Edit window becomes frontmost) stashes which window here for
+// the Save callback to act on. Single-window assumption is fine for now -
+// same limitation menubar.h already documents for any app's menu items.
+static window_t* g_textedit_focus_win = 0;
+
+static void textedit_on_open(window_t* win) {
+	textedit_state_t* st = (textedit_state_t*)kmalloc(sizeof(textedit_state_t));
+	if (!st) return;
+	st->len = 0;
+	st->filename[0] = 0;
+	st->dirty = 0;
+	win->app_state = st;
+}
+
+static void textedit_on_close(window_t* win) {
+	if (win->app_state) kfree(win->app_state);
+	win->app_state = 0;
+	if (g_textedit_focus_win == win) g_textedit_focus_win = 0;
+}
+
+// Loads `filename` (from the current fat32 directory) into an already-open
+// Text Edit window - called by files_on_click above when a file gets
+// double-clicked. Reuses the window's existing app_state (allocated back
+// in on_open) rather than requiring a fresh window per file.
+static void textedit_load_file(window_t* win, const char* filename) {
+	textedit_state_t* st = (textedit_state_t*)win->app_state;
+	if (!st) return;
+	int bytes = fat32_read_file(filename, (uint8_t*)st->buf, TEXTEDIT_BUF_MAX - 1);
+	st->len = (bytes < 0) ? 0 : bytes;
+	st->buf[st->len] = 0;
+	str_copy(st->filename, filename, TEXTEDIT_NAME_MAX);
+	st->dirty = 0;
+}
+
+static void textedit_cmd_save(void) {
+	if (!g_textedit_focus_win) return;
+	textedit_state_t* st = (textedit_state_t*)g_textedit_focus_win->app_state;
+	if (!st) return;
+	if (st->filename[0] == 0) return; // untitled - no "Save As" prompt yet, known gap
+	int written = fat32_write_file(st->filename, (const uint8_t*)st->buf, (uint32_t)st->len);
+	if (written >= 0) st->dirty = 0;
+}
+
+static void textedit_on_focus(window_t* win) {
+	g_textedit_focus_win = win;
+	menubar_add_item(MENUBAR_FILE, "Save", textedit_cmd_save);
+}
+
 static void textedit_draw(window_t* win) {
-	vga_draw_text(win->x + 6, win->y + TITLE_H + 6,  "Text Editor - wire up", APP_TEXT_COLOUR, APP_BG_COLOUR);
-	vga_draw_text(win->x + 6, win->y + TITLE_H + 22, "tomorrow (reuse the", APP_TEXT_COLOUR, APP_BG_COLOUR);
-	vga_draw_text(win->x + 6, win->y + TITLE_H + 38, "terminal's buffer + on_key)", APP_TEXT_COLOUR, APP_BG_COLOUR);
+	textedit_state_t* st = (textedit_state_t*)win->app_state;
+	if (!st) return;
+
+	// filename/status strip above the wrapped text body, same warm chrome
+	// colours as the rest of the app - draw_wrapped_text starts its own
+	// text a fixed offset below the title bar, so this needs to live in
+	// that same first row rather than overlapping it.
+	char status[TEXTEDIT_NAME_MAX + 16];
+	int p = 0;
+	const char* name = st->filename[0] ? st->filename : "untitled";
+	for (int i = 0; name[i] && p < TEXTEDIT_NAME_MAX; i++) status[p++] = name[i];
+	if (st->dirty) { status[p++] = ' '; status[p++] = '*'; }
+	status[p] = 0;
+	vga_draw_text(win->x + 6, win->y + TITLE_H + 4, status, APP_TEXT_COLOUR, APP_BG_COLOUR);
+
+	// body text starts one row down so it doesn't collide with the status
+	// strip above - draw_wrapped_text always measures from win->y+TITLE_H,
+	// so fake a slightly-shorter/shifted window for that call only.
+	window_t body = *win;
+	body.y += 16;
+	body.h -= 16;
+	draw_wrapped_text(&body, st->buf, st->len, APP_TEXT_COLOUR, APP_BG_COLOUR);
+}
+
+static void textedit_on_key(window_t* win, char c) {
+	textedit_state_t* st = (textedit_state_t*)win->app_state;
+	if (!st) return;
+
+	if (c == '\b') {
+		if (st->len > 0) { st->len--; st->dirty = 1; }
+		return;
+	}
+
+	if (st->len < TEXTEDIT_BUF_MAX - 1 && ((c >= 32 && c <= 126) || c == '\n')) {
+		st->buf[st->len++] = c;
+		st->dirty = 1;
+	}
 }
 
 static const app_vtable_t textedit_vtable = {
-	.draw = textedit_draw,
+	.on_open  = textedit_on_open,
+	.on_close = textedit_on_close,
+	.draw     = textedit_draw,
+	.on_key   = textedit_on_key,
+	.on_focus = textedit_on_focus,
 };
 
 // -------------------------------- calculator --------------------------------
