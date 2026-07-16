@@ -17,6 +17,15 @@
 #define WIN_BORDER_COLOUR 0x6E2C00
 #define WIN_TITLE_TEXT_COLOUR 0x4A2511
 
+// close ("X") button - sits in the titlebar's top-right corner, same
+// TITLE_H strip the title text lives in. Font is a fixed 8x16 glyph
+// (font8x16.h), so the button is sized to exactly frame one character.
+#define CLOSE_BTN_W       16
+#define CLOSE_BTN_H       16
+#define CLOSE_BTN_MARGIN  4
+#define CLOSE_BTN_COLOUR       0xC0392B
+#define CLOSE_BTN_TEXT_COLOUR  0xFFFFFF
+
 // centred desktop watermark - same sun glyph as the taskbar's top-left icon
 // (taskbar.c's draw_sun), just scaled up. Kept here rather than shared with
 // taskbar.c since the taskbar's version is tied to its fixed ICON_SZ.
@@ -56,11 +65,34 @@ int window_top_index(void) {
 
 // -------------------------------- internals ------------------------------
 
+// bounding box of a window's close button - shared by the draw call and
+// the click hit-test so they can never disagree about where it is.
+static void close_button_rect(window_t* win, int* bx, int* by, int* bw, int* bh) {
+	*bw = CLOSE_BTN_W;
+	*bh = CLOSE_BTN_H;
+	*bx = win->x + win->w - CLOSE_BTN_MARGIN - CLOSE_BTN_W;
+	*by = win->y + (TITLE_H - CLOSE_BTN_H) / 2;
+}
+
+static void draw_close_button(window_t* win) {
+	int bx, by, bw, bh;
+	close_button_rect(win, &bx, &by, &bw, &bh);
+	vga_fill_rect(bx, by, bw, bh, CLOSE_BTN_COLOUR);
+	vga_draw_text(bx + (bw - 8) / 2, by, "X", CLOSE_BTN_TEXT_COLOUR, CLOSE_BTN_COLOUR);
+}
+
+static int point_in_close_button(window_t* win, int px, int py) {
+	int bx, by, bw, bh;
+	close_button_rect(win, &bx, &by, &bw, &bh);
+	return px >= bx && px < bx + bw && py >= by && py < by + bh;
+}
+
 static void draw_window(window_t* win) {
 	vga_fill_rect(win->x, win->y, win->w, TITLE_H, WIN_TITLE_COLOUR);
 	vga_fill_rect(win->x, win->y + TITLE_H, win->w, win->h - TITLE_H, WIN_BODY_COLOUR);
 	vga_draw_rect(win->x, win->y, win->w, win->h, WIN_BORDER_COLOUR);
 	vga_draw_text(win->x + 6, win->y + 4, win->title, WIN_TITLE_TEXT_COLOUR, WIN_TITLE_COLOUR);
+	draw_close_button(win);
 
 	// app_type == APP_NONE (e.g. the startup "SolOS" window) has no
 	// vtable, so it just keeps the plain body fill above - everything
@@ -151,6 +183,34 @@ static void bring_to_front(int idx) {
 	if (pos == -1 || pos == g_window_count - 1) return;
 	for (int i = pos; i < g_window_count - 1; i++) z_order[i] = z_order[i + 1];
 	z_order[g_window_count - 1] = idx;
+}
+
+// destroys the window at raw index idx: fires the app's on_close (see
+// app.h's KNOWN GAP note - this is what finally wires it up), then
+// compacts both windows[] and z_order[] so raw indices stay dense
+// (0..g_window_count-1) exactly like spawn_window() expects. Every raw
+// index greater than idx shifts down by one, so z_order's surviving
+// entries need the same shift or they'd point at the wrong slot.
+static void close_window(int idx) {
+	if (idx < 0 || idx >= g_window_count) return;
+	window_t* win = &windows[idx];
+
+	const app_vtable_t* vt = app_get_vtable(win->app_type);
+	if (vt && vt->on_close) vt->on_close(win);
+
+	for (int i = 0; i < g_window_count; i++) {
+		if (z_order[i] == idx) {
+			for (int j = i; j < g_window_count - 1; j++) z_order[j] = z_order[j + 1];
+			break;
+		}
+	}
+
+	for (int i = idx; i < g_window_count - 1; i++) windows[i] = windows[i + 1];
+	g_window_count--;
+
+	for (int i = 0; i < g_window_count; i++) {
+		if (z_order[i] > idx) z_order[i]--;
+	}
 }
 
 static int find_window_by_title(const char* title) {
@@ -372,11 +432,33 @@ void desktop() {
 			}
 		}
 
-		// a click that isn't on the taskbar/menu bar and isn't on a titlebar
-		// (handled by the drag hit-test just below) - if it lands inside a
-		// window's content area, focus that window and forward the click
-		// to its app. Front-to-back so an overlapping window on top wins.
+		// a click on any window's close button - checked front-to-back (so
+		// an overlapping window on top wins) and before the drag hit-test
+		// below, since the close button sits inside the titlebar and would
+		// otherwise also match point_in_titlebar() and start a drag instead.
+		int close_consumed = 0;
 		if (clicked && !taskbar_consumed && !menubar_consumed) {
+			for (int i = g_window_count - 1; i >= 0; i--) {
+				int idx = z_order[i];
+				window_t* win = &windows[idx];
+				if (!point_in_close_button(win, mx, my)) continue;
+
+				int cx = win->x, cy = win->y, cw = win->w, ch = win->h;
+				close_window(idx);
+				expand_rect(&dx1, &dy1, &dx2, &dy2, cx, cy, cw, ch);
+				dirty = 1;
+				close_consumed = 1;
+				repaint_region(dx1, dy1, dx2 - dx1, dy2 - dy1);
+				break;
+			}
+		}
+
+		// a click that isn't on the taskbar/menu bar/a close button and
+		// isn't on a titlebar (handled by the drag hit-test just below) -
+		// if it lands inside a window's content area, focus that window
+		// and forward the click to its app. Front-to-back so an
+		// overlapping window on top wins.
+		if (clicked && !taskbar_consumed && !menubar_consumed && !close_consumed) {
 			for (int i = g_window_count - 1; i >= 0; i--) {
 				int idx = z_order[i];
 				window_t* win = &windows[idx];
@@ -427,7 +509,7 @@ void desktop() {
 			}
 		}
 
-		if (pressed && dragging_index == -1 && !taskbar_consumed && !menubar_consumed) {
+		if (pressed && dragging_index == -1 && !taskbar_consumed && !menubar_consumed && !close_consumed) {
 			for (int i = g_window_count - 1; i >= 0; i--) {
 				window_t* win = &windows[z_order[i]];
 				if (point_in_titlebar(win, mx, my)) {
