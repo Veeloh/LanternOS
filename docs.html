@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SolOS — Documentation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <style>
+        code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    </style>
+</head>
+<body class="bg-[#E67E22] text-zinc-900 font-sans antialiased min-h-screen selection:bg-[#F39C12] selection:text-[#4A2511]">
+
+    <!-- Top Navigation Bar -->
+    <nav class="bg-[#FFF8DC] border-b-4 border-[#6E2C00] px-6 py-4 flex items-center justify-between shadow-md">
+        <a href="index.html" class="flex items-center space-x-4">
+            <div class="relative w-8 h-8 flex items-center justify-center">
+                <div class="w-4 h-4 bg-[#F39C12] border border-[#6E2C00] rounded-sm z-10 shadow-sm"></div>
+                <div class="absolute w-[2px] h-7 bg-[#6E2C00] top-0.5"></div>
+                <div class="absolute h-[2px] w-7 bg-[#6E2C00] left-0.5"></div>
+            </div>
+            <span class="text-2xl font-black tracking-tight text-[#4A2511]">SolOS</span>
+        </a>
+
+        <div class="flex items-center space-x-3">
+            <a href="docs.html" class="flex items-center space-x-2 text-sm text-[#4A2511] font-bold border-2 border-[#6E2C00] px-4 py-2 rounded-lg bg-[#F39C12]">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M6 2c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6H6zm7 1.5L18.5 9H13V3.5zM8 13h8v1.5H8V13zm0 3h8v1.5H8V16zm0-6h5v1.5H8V10z"/></svg>
+                <span class="hidden sm:inline">Docs</span>
+            </a>
+            <a href="https://github.com/Veeloh/SolOS" target="_blank" class="flex items-center space-x-2 text-sm text-[#4A2511] font-bold hover:bg-[#F39C12]/20 transition-all border-2 border-[#6E2C00] px-4 py-2 rounded-lg bg-[#FFF8DC]">
+                <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                <span class="hidden sm:inline">View GitHub</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="max-w-4xl mx-auto px-6 pt-16 pb-8 text-center">
+        <span class="px-4 py-1.5 text-xs font-black uppercase tracking-widest text-[#4A2511] bg-[#F39C12] border-2 border-[#6E2C00] rounded-full shadow-sm">
+            Kernel Reference
+        </span>
+        <h1 class="text-4xl md:text-6xl font-black tracking-tight text-[#FFF8DC] mt-6 drop-shadow-[0_2px_4px_rgba(110,44,0,0.6)]">
+            Talk to the kernel.
+        </h1>
+        <p class="text-[#4A2511] font-bold text-lg md:text-xl mt-4 max-w-xl mx-auto">
+            Every syscall SolOS exposes to userland, plus the menubar API windowed apps use to add their own menus.
+        </p>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-6 pb-24 space-y-10">
+
+        <!-- Jump nav -->
+        <nav class="flex flex-wrap gap-3 justify-center">
+            <a href="#syscalls" class="text-xs font-black uppercase tracking-wider text-[#4A2511] bg-[#FFF8DC] border-2 border-[#6E2C00] px-4 py-2 rounded-lg hover:bg-[#F39C12]/20 transition-all">Syscalls</a>
+            <a href="#example" class="text-xs font-black uppercase tracking-wider text-[#4A2511] bg-[#FFF8DC] border-2 border-[#6E2C00] px-4 py-2 rounded-lg hover:bg-[#F39C12]/20 transition-all">Example Program</a>
+            <a href="#menubar" class="text-xs font-black uppercase tracking-wider text-[#4A2511] bg-[#FFF8DC] border-2 border-[#6E2C00] px-4 py-2 rounded-lg hover:bg-[#F39C12]/20 transition-all">Menubar API</a>
+        </nav>
+
+        <!-- Syscalls -->
+        <section id="syscalls" class="bg-[#FFF8DC] border-4 border-[#6E2C00] rounded-lg shadow-2xl overflow-hidden scroll-mt-6">
+            <div class="bg-[#F39C12] border-b-4 border-[#6E2C00] px-4 py-3 flex items-center justify-between">
+                <span class="font-black text-sm uppercase tracking-wider text-[#4A2511]">Syscall_Table.sys</span>
+                <div class="flex space-x-1.5">
+                    <div class="w-3 h-3 border-2 border-[#6E2C00] bg-[#FFF8DC]"></div>
+                    <div class="w-3 h-3 border-2 border-[#6E2C00] bg-[#FFF8DC]"></div>
+                </div>
+            </div>
+            <div class="p-6 md:p-8 space-y-6">
+                <p class="text-[#4A2511]/90 text-sm font-semibold leading-relaxed">
+                    Userland talks to the kernel with <span class="mono font-bold bg-[#F39C12]/20 px-1.5 py-0.5 rounded border border-[#6E2C00]/30">int $0x80</span>.
+                    Load the syscall number into <span class="mono font-bold">eax</span> and the first argument into <span class="mono font-bold">ebx</span>, then trap. There's no libc and no <span class="mono font-bold">crt0</span> — the loader calls your <span class="mono font-bold">_start</span> directly, so it's the raw ABI or nothing.
+                </p>
+
+                <div class="overflow-x-auto border-2 border-[#6E2C00] rounded">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-[#F39C12]/30 border-b-2 border-[#6E2C00]">
+                                <th class="text-left font-black uppercase text-xs tracking-wider text-[#4A2511] px-4 py-3">Syscall</th>
+                                <th class="text-left font-black uppercase text-xs tracking-wider text-[#4A2511] px-4 py-3">eax</th>
+                                <th class="text-left font-black uppercase text-xs tracking-wider text-[#4A2511] px-4 py-3">ebx</th>
+                                <th class="text-left font-black uppercase text-xs tracking-wider text-[#4A2511] px-4 py-3">Behavior</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y-2 divide-[#6E2C00]/20 font-semibold text-[#4A2511]">
+                            <tr>
+                                <td class="px-4 py-3 mono font-bold">SYS_EXIT</td>
+                                <td class="px-4 py-3 mono">0</td>
+                                <td class="px-4 py-3 mono">exit code</td>
+                                <td class="px-4 py-3">Marks the current process <span class="mono">PROCESS_DEAD</span>, hands off to <span class="mono">process_schedule()</span>, then spins on <span class="mono">hlt</span> forever. Never returns to the caller.</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-3 mono font-bold">SYS_WRITE</td>
+                                <td class="px-4 py-3 mono">1</td>
+                                <td class="px-4 py-3 mono">char* str</td>
+                                <td class="px-4 py-3">Prints a null-terminated string straight to the VGA text buffer via <span class="mono">vga_print()</span>.</td>
+                            </tr>
+                            <tr>
+                                <td class="px-4 py-3 mono font-bold">SYS_READ</td>
+                                <td class="px-4 py-3 mono">2</td>
+                                <td class="px-4 py-3 mono">—</td>
+                                <td class="px-4 py-3">Blocks until a key is available (<span class="mono">keyboard_getchar()</span>). Serviced on the interrupt path rather than the generic dispatcher below — its case in <span class="mono">syscall_handler</span> is currently a no-op.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div>
+                    <h3 class="text-xs font-black uppercase tracking-wider text-[#4A2511] mb-2">Dispatcher</h3>
+                    <p class="text-[#4A2511]/90 text-sm font-semibold leading-relaxed mb-3">
+                        <span class="mono font-bold">syscall_init()</span> wires interrupt vector <span class="mono">0x80</span> to <span class="mono">syscall_isr</span>. On trap, the ISR calls into <span class="mono">syscall_handler(eax, ebx, ecx, edx)</span>, which switches on <span class="mono">eax</span> and dispatches:
+                    </p>
+                    <pre class="mono text-xs md:text-sm bg-[#4A2511] text-[#FFF8DC] rounded border-2 border-[#6E2C00] p-4 overflow-x-auto leading-relaxed"><code>void syscall_handler(uint32_t eax, uint32_t ebx, uint32_t ecx, uint32_t edx) {
+    switch (eax) {
+        case SYS_EXIT:
+            sys_exit(ebx);
+            break;
+        case SYS_WRITE:
+            sys_write((const char*)ebx);
+            break;
+        case SYS_READ:
+        // handled in isr
+            break;
+        default: vga_print("\nUnknown syscall!");
+        break;
+    }
+}</code></pre>
+                    <p class="text-[#4A2511]/70 text-xs font-semibold mt-3">Unrecognized syscall numbers fall through to the default case and print a warning instead of crashing.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Example program -->
+        <section id="example" class="bg-[#FFF8DC] border-4 border-[#6E2C00] rounded-lg shadow-2xl overflow-hidden scroll-mt-6">
+            <div class="bg-[#F39C12] border-b-4 border-[#6E2C00] px-4 py-3 flex items-center justify-between">
+                <span class="font-black text-sm uppercase tracking-wider text-[#4A2511]">hello.c</span>
+                <div class="flex space-x-1.5">
+                    <div class="w-3 h-3 border-2 border-[#6E2C00] bg-[#FFF8DC]"></div>
+                    <div class="w-3 h-3 border-2 border-[#6E2C00] bg-[#FFF8DC]"></div>
+                </div>
+            </div>
+            <div class="p-6 md:p-8 space-y-6">
+                <p class="text-[#4A2511]/90 text-sm font-semibold leading-relaxed">
+                    The minimal userland test program, found in <span class="mono font-bold bg-[#F39C12]/20 px-1.5 py-0.5 rounded border border-[#6E2C00]/30">src/user</span>. No libc, no <span class="mono font-bold">crt0</span> — <span class="mono font-bold">_start</span> runs directly on the kernel's stack, since <span class="mono font-bold">elf_exec</span> calls the entry point like a normal function.
+                </p>
+                <pre class="mono text-xs md:text-sm bg-[#4A2511] text-[#FFF8DC] rounded border-2 border-[#6E2C00] p-4 overflow-x-auto leading-relaxed"><code>// hello.c - minimal SolOS userland test program.
+// No libc, no crt0 - _start runs directly on the kernel's stack
+// (elf_exec calls the entry point like a normal function), so we
+// don't need to set up our own stack frame here.
+static void sys_write(const char* str) {
+    __asm__ volatile (
+        "mov $1, %%eax\n"   // SYS_WRITE
+        "mov %0, %%ebx\n"
+        "int $0x80\n"
+        :: "r"(str)
+        : "eax", "ebx"
+    );
+}
+static void sys_exit(int code) {
+    __asm__ volatile (
+        "mov $0, %%eax\n"   // SYS_EXIT
+        "mov %0, %%ebx\n"
+        "int $0x80\n"
+        :: "r"(code)
+        : "eax", "ebx"
+    );
+}
+void _start() {
+    sys_write("Hello from userland!\n");
+    sys_exit(0);
+    // sys_exit halts the process (see sys_exit() in syscall.c - it
+    // marks the process dead and spins forever), so we never get
+    // here. This is just a safety net in case that ever changes.
+//  while (1);
+}</code></pre>
+
+                <div>
+                    <h3 class="text-xs font-black uppercase tracking-wider text-[#4A2511] mb-2">Linker script</h3>
+                    <p class="text-[#4A2511]/90 text-sm font-semibold leading-relaxed mb-3">
+                        Userland binaries load at a fixed base. The loader refuses segments outside <span class="mono font-bold">0x400000–0x800000</span> (<span class="mono">ELF_USER_MIN_ADDR</span> in <span class="mono">elf.h</span>), so the linker script must match:
+                    </p>
+                    <pre class="mono text-xs md:text-sm bg-[#4A2511] text-[#FFF8DC] rounded border-2 border-[#6E2C00] p-4 overflow-x-auto leading-relaxed"><code>ENTRY(_start)
+SECTIONS {
+    /* must match ELF_USER_MIN_ADDR in elf.h - the loader refuses
+       to load segments outside 0x400000-0x800000 */
+    . = 0x400000;
+    .text : {
+        *(.text)
+    }
+    .rodata : {
+        *(.rodata)
+    }
+    .data : {
+        *(.data)
+    }
+    .bss : {
+        *(COMMON)
+        *(.bss)
+    }
+}</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Menubar API -->
+        <section id="menubar" class="bg-[#FFF8DC] border-4 border-[#6E2C00] rounded-lg shadow-2xl overflow-hidden scroll-mt-6">
+            <div class="bg-[#F39C12] border-b-4 border-[#6E2C00] px-4 py-3 flex items-center justify-between">
+                <span class="font-black text-sm uppercase tracking-wider text-[#4A2511]">menubar.h</span>
+                <div class="flex space-x-1.5">
+                    <div class="w-3 h-3 border-2 border-[#6E2C00] bg-[#FFF8DC]"></div>
+                    <div class="w-3 h-3 border-2 border-[#6E2C00] bg-[#FFF8DC]"></div>
+                </div>
+            </div>
+            <div class="p-6 md:p-8 space-y-6">
+                <p class="text-[#4A2511]/90 text-sm font-semibold leading-relaxed">
+                    Windowed apps register their own commands into the two built-in dropdowns instead of drawing a menu bar themselves.
+                </p>
+
+                <div class="space-y-4">
+                    <div class="border-2 border-[#6E2C00]/40 rounded p-4">
+                        <p class="mono text-sm font-black text-[#4A2511]">typedef void (*menubar_cmd_t)(void);</p>
+                        <p class="text-xs font-semibold text-[#4A2511]/80 mt-1">A menu command: a zero-argument function pointer, run when the item is clicked.</p>
+                    </div>
+                    <div class="border-2 border-[#6E2C00]/40 rounded p-4">
+                        <p class="mono text-sm font-black text-[#4A2511]">typedef enum { MENUBAR_FILE, MENUBAR_EDIT } menubar_menu_t;</p>
+                        <p class="text-xs font-semibold text-[#4A2511]/80 mt-1">The two dropdowns currently available: <span class="mono">File</span> and <span class="mono">Edit</span>.</p>
+                    </div>
+                    <div class="border-2 border-[#6E2C00]/40 rounded p-4">
+                        <p class="mono text-sm font-black text-[#4A2511]">#define MENUBAR_MAX_ITEMS 4</p>
+                        <p class="text-xs font-semibold text-[#4A2511]/80 mt-1">Each dropdown holds at most 4 rows.</p>
+                    </div>
+                    <div class="border-2 border-[#6E2C00]/40 rounded p-4">
+                        <p class="mono text-sm font-black text-[#4A2511]">void menubar_add_item(menubar_menu_t menu, const char* title, menubar_cmd_t cmd);</p>
+                        <p class="text-xs font-semibold text-[#4A2511]/80 mt-1 leading-relaxed">
+                            Adds one row to the given dropdown. <span class="mono">title</span> should outlive the item — a string literal is fine, a stack buffer isn't. Silently no-ops once <span class="mono">MENUBAR_MAX_ITEMS</span> is hit, so watch your item count.
+                        </p>
+                    </div>
+                    <div class="border-2 border-[#6E2C00]/40 rounded p-4">
+                        <p class="mono text-sm font-black text-[#4A2511]">void menubar_clear_menu(void);</p>
+                        <p class="text-xs font-semibold text-[#4A2511]/80 mt-1 leading-relaxed">
+                            Removes every item from both dropdowns. Also closes an open dropdown, since its row count is about to change out from under it.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <p class="text-center text-xs font-bold text-[#4A2511]/70">
+            Source lives in <a href="https://github.com/Veeloh/SolOS" target="_blank" class="underline font-black text-[#6E2C00]">github.com/Veeloh/SolOS</a>. Docs source is <span class="mono">src/user</span> and the kernel's syscall/menubar headers — file an issue if something here drifts from the code.
+        </p>
+    </main>
+
+    <footer class="border-t-2 border-[#6E2C00]/30 py-8 px-6 text-center text-xs font-bold text-[#4A2511]/70">
+        <p>&copy; 2025 - 2026 SolOS Project. Hosted cleanly off micro-controller hardware architectures.</p>
+    </footer>
+
+</body>
+</html>
